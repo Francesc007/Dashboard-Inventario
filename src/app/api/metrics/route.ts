@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAuth } from "@/lib/require-auth";
+import { normalizeInventoryPublicUrl } from "@/lib/storage-inventory";
 import type { TrackEventType } from "@/types";
 
 function emptyCounts(): Record<TrackEventType, number> {
@@ -65,7 +66,15 @@ export async function GET() {
       return NextResponse.json({ error: e2.message }, { status: 500 });
     }
 
-    const carMap = new Map((cars ?? []).map((c) => [c.id, c]));
+    const carMap = new Map(
+      (cars ?? []).map((c) => [
+        c.id,
+        {
+          ...c,
+          cover_image_url: normalizeInventoryPublicUrl(c.cover_image_url),
+        },
+      ]),
+    );
 
     type CarAgg = {
       carId: string | null;

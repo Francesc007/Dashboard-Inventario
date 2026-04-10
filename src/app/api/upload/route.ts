@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAuth } from "@/lib/require-auth";
+import { STORAGE_BUCKET } from "@/lib/storage-inventory";
 import { randomUUID } from "crypto";
 
 const MAX_BYTES = 8 * 1024 * 1024;
@@ -56,7 +57,7 @@ export async function POST(request: Request) {
   try {
     const supabase = createAdminClient();
     const buf = Buffer.from(await file.arrayBuffer());
-    const { error } = await supabase.storage.from("inventory").upload(path, buf, {
+    const { error } = await supabase.storage.from(STORAGE_BUCKET).upload(path, buf, {
       contentType: type,
       upsert: false,
     });
@@ -71,7 +72,7 @@ export async function POST(request: Request) {
 
     const {
       data: { publicUrl },
-    } = supabase.storage.from("inventory").getPublicUrl(path);
+    } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(path);
 
     return NextResponse.json({ url: publicUrl, path });
   } catch (e) {

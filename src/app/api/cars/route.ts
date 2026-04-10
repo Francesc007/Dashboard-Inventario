@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAuth } from "@/lib/require-auth";
+import { normalizeCarImageUrls } from "@/lib/storage-inventory";
+import type { CarRow } from "@/types";
 
 const optionalUrl = z
   .union([z.string().url(), z.literal(""), z.null()])
@@ -24,9 +26,6 @@ const carSchema = z.object({
 });
 
 export async function GET() {
-  const unauthorized = await requireAuth();
-  if (unauthorized) return unauthorized;
-
   try {
     const supabase = createAdminClient();
     const { data, error } = await supabase
@@ -38,7 +37,11 @@ export async function GET() {
       console.error(error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
-    return NextResponse.json({ cars: data ?? [] });
+
+    const cars = (data ?? []).map((row) =>
+      normalizeCarImageUrls(row as CarRow),
+    );
+    return NextResponse.json({ cars });
   } catch (e) {
     console.error(e);
     return NextResponse.json(
@@ -94,7 +97,9 @@ export async function POST(request: Request) {
       console.error(error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
-    return NextResponse.json({ car: data });
+    return NextResponse.json({
+      car: data ? normalizeCarImageUrls(data as CarRow) : data,
+    });
   } catch (e) {
     console.error(e);
     return NextResponse.json(

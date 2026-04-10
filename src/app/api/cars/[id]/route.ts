@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAuth } from "@/lib/require-auth";
+import { normalizeCarImageUrls } from "@/lib/storage-inventory";
+import type { CarRow } from "@/types";
 
 const optionalUrl = z
   .union([z.string().url(), z.literal(""), z.null()])
@@ -46,7 +48,7 @@ export async function GET(_request: Request, { params }: Params) {
     if (!data) {
       return NextResponse.json({ error: "No encontrado" }, { status: 404 });
     }
-    return NextResponse.json({ car: data });
+    return NextResponse.json({ car: normalizeCarImageUrls(data as CarRow) });
   } catch (e) {
     console.error(e);
     return NextResponse.json(
@@ -91,7 +93,7 @@ export async function PATCH(request: Request, { params }: Params) {
     if (!data) {
       return NextResponse.json({ error: "No encontrado" }, { status: 404 });
     }
-    return NextResponse.json({ car: data });
+    return NextResponse.json({ car: normalizeCarImageUrls(data as CarRow) });
   } catch (e) {
     console.error(e);
     return NextResponse.json(
