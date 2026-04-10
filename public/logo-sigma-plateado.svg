@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 56" fill="none" aria-hidden="true">
+  <defs>
+    <linearGradient id="sigmaSilver" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f8fafc"/>
+      <stop offset="35%" stop-color="#94a3b8"/>
+      <stop offset="65%" stop-color="#cbd5e1"/>
+      <stop offset="100%" stop-color="#64748b"/>
+    </linearGradient>
+    <linearGradient id="sigmaShine" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <text x="4" y="44" font-family="ui-sans-serif, system-ui, sans-serif" font-weight="800" font-size="48" font-style="italic" letter-spacing="-0.04em" fill="url(#sigmaSilver)">&#931;</text>
+  <text x="52" y="40" font-family="ui-sans-serif, system-ui, sans-serif" font-weight="700" font-size="28" letter-spacing="0.12em" fill="url(#sigmaSilver)">SIGMA</text>
+  <rect x="52" y="44" width="168" height="2" rx="1" fill="url(#sigmaSilver)" opacity="0.6"/>
+</svg>
