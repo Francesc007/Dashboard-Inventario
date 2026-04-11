@@ -199,7 +199,7 @@ export function InventoryClient() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
+        <div className="min-w-0 text-center sm:text-left">
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">
             SIGMA AI AGENCY
           </h1>
@@ -210,7 +210,7 @@ export function InventoryClient() {
         <button
           type="button"
           onClick={openCreate}
-          className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-700 to-cyan-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-cyan-950/30"
+          className="inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-700 to-cyan-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-cyan-950/30 sm:w-auto"
         >
           <Plus className="h-4 w-4" />
           Nuevo auto
@@ -226,15 +226,15 @@ export function InventoryClient() {
       {loading ? (
         <p className="text-sm text-zinc-500">Cargando…</p>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid min-w-0 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {cars.map((c) => (
             <motion.article
               key={c.id}
               initial={false}
               animate={{ opacity: 1, y: 0 }}
-              className="overflow-hidden rounded-2xl border border-white/[0.06] bg-white/[0.02]"
+              className="min-w-0 overflow-hidden rounded-2xl border border-white/[0.06] bg-white/[0.02]"
             >
-              <div className="relative aspect-[16/10] bg-zinc-900">
+              <div className="relative aspect-[16/10] min-h-0 bg-zinc-900">
                 {c.cover_image_url ? (
                   <Image
                     src={c.cover_image_url}
@@ -313,26 +313,26 @@ export function InventoryClient() {
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.98, opacity: 0 }}
               onClick={(e) => e.stopPropagation()}
-              className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-white/[0.08] bg-[#0c0e18] p-6 shadow-2xl"
+              className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-white/[0.08] bg-[#0c0e18] p-5 shadow-2xl sm:p-6"
             >
               <h3 className="text-lg font-semibold text-white">
                 {editingId ? "Editar vehículo" : "Nuevo vehículo"}
               </h3>
-              <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                <label className="col-span-2">
-                  <span className="text-xs text-zinc-500">Marca</span>
+              <div className="mt-4 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
+                <label className="sm:col-span-2">
+                  <span className="text-xs font-medium text-zinc-400">Marca</span>
                   <input
-                    className="mt-1 w-full rounded-lg border border-white/[0.08] bg-black/30 px-3 py-2 text-white"
+                    className="panel-field"
                     value={form.brand}
                     onChange={(e) =>
                       setForm((f) => ({ ...f, brand: e.target.value }))
                     }
                   />
                 </label>
-                <label className="col-span-2">
-                  <span className="text-xs text-zinc-500">Modelo</span>
+                <label className="sm:col-span-2">
+                  <span className="text-xs font-medium text-zinc-400">Modelo</span>
                   <input
-                    className="mt-1 w-full rounded-lg border border-white/[0.08] bg-black/30 px-3 py-2 text-white"
+                    className="panel-field"
                     value={form.model}
                     onChange={(e) =>
                       setForm((f) => ({ ...f, model: e.target.value }))
@@ -340,10 +340,10 @@ export function InventoryClient() {
                   />
                 </label>
                 <label>
-                  <span className="text-xs text-zinc-500">Año</span>
+                  <span className="text-xs font-medium text-zinc-400">Año</span>
                   <input
                     type="number"
-                    className="mt-1 w-full rounded-lg border border-white/[0.08] bg-black/30 px-3 py-2 text-white"
+                    className="panel-field"
                     value={form.year}
                     onChange={(e) =>
                       setForm((f) => ({
@@ -354,13 +354,13 @@ export function InventoryClient() {
                   />
                 </label>
                 <label>
-                  <span className="text-xs text-zinc-500">Precio (MXN)</span>
+                  <span className="text-xs font-medium text-zinc-400">Precio (MXN)</span>
                   <input
                     type="text"
                     inputMode="numeric"
                     autoComplete="off"
                     placeholder=""
-                    className="mt-1 w-full rounded-lg border border-white/[0.08] bg-black/30 px-3 py-2 text-white placeholder:text-zinc-600"
+                    className="panel-field placeholder:text-zinc-500"
                     value={formatPriceThousandsDisplay(form.priceDigits)}
                     onChange={(e) => {
                       const digits = e.target.value.replace(/\D/g, "").slice(0, 12);
@@ -369,10 +369,10 @@ export function InventoryClient() {
                   />
                 </label>
                 <label>
-                  <span className="text-xs text-zinc-500">Descuento %</span>
+                  <span className="text-xs font-medium text-zinc-400">Descuento %</span>
                   <input
                     type="number"
-                    className="mt-1 w-full rounded-lg border border-white/[0.08] bg-black/30 px-3 py-2 text-white"
+                    className="panel-field"
                     value={form.discount_percent}
                     onChange={(e) =>
                       setForm((f) => ({
@@ -383,10 +383,10 @@ export function InventoryClient() {
                   />
                 </label>
                 <label>
-                  <span className="text-xs text-zinc-500">Kilometraje</span>
+                  <span className="text-xs font-medium text-zinc-400">Kilometraje</span>
                   <input
                     type="number"
-                    className="mt-1 w-full rounded-lg border border-white/[0.08] bg-black/30 px-3 py-2 text-white"
+                    className="panel-field"
                     value={form.mileage_km}
                     onChange={(e) =>
                       setForm((f) => ({
@@ -396,10 +396,10 @@ export function InventoryClient() {
                     }
                   />
                 </label>
-                <label className="col-span-2">
-                  <span className="text-xs text-zinc-500">Condición</span>
+                <label className="sm:col-span-2">
+                  <span className="text-xs font-medium text-zinc-400">Condición</span>
                   <select
-                    className="mt-1 w-full rounded-lg border border-white/[0.08] bg-black/30 px-3 py-2 text-white"
+                    className="panel-field bg-slate-950/80"
                     value={form.condition}
                     onChange={(e) =>
                       setForm((f) => ({
@@ -412,10 +412,10 @@ export function InventoryClient() {
                     <option value="seminuevo">Seminuevo</option>
                   </select>
                 </label>
-                <label className="col-span-2">
-                  <span className="text-xs text-zinc-500">Motor</span>
+                <label className="sm:col-span-2">
+                  <span className="text-xs font-medium text-zinc-400">Motor</span>
                   <input
-                    className="mt-1 w-full rounded-lg border border-white/[0.08] bg-black/30 px-3 py-2 text-white"
+                    className="panel-field"
                     value={form.engine}
                     onChange={(e) =>
                       setForm((f) => ({ ...f, engine: e.target.value }))
@@ -423,11 +423,11 @@ export function InventoryClient() {
                   />
                 </label>
                 <label>
-                  <span className="text-xs text-zinc-500">0–100 km/h (s)</span>
+                  <span className="text-xs font-medium text-zinc-400">0–100 km/h (s)</span>
                   <input
                     type="number"
                     step="0.1"
-                    className="mt-1 w-full rounded-lg border border-white/[0.08] bg-black/30 px-3 py-2 text-white"
+                    className="panel-field"
                     value={form.acceleration_0_100_sec}
                     onChange={(e) =>
                       setForm((f) => ({
@@ -438,18 +438,18 @@ export function InventoryClient() {
                   />
                 </label>
                 <label>
-                  <span className="text-xs text-zinc-500">Potencia (HP)</span>
+                  <span className="text-xs font-medium text-zinc-400">Potencia (HP)</span>
                   <input
                     type="number"
-                    className="mt-1 w-full rounded-lg border border-white/[0.08] bg-black/30 px-3 py-2 text-white"
+                    className="panel-field"
                     value={form.power_hp}
                     onChange={(e) =>
                       setForm((f) => ({ ...f, power_hp: e.target.value }))
                     }
                   />
                 </label>
-                <div className="col-span-2 space-y-3">
-                  <span className="text-xs text-zinc-500">Portada</span>
+                <div className="space-y-3 sm:col-span-2">
+                  <span className="text-xs font-medium text-zinc-400">Portada</span>
                   <div className="flex flex-wrap items-start gap-3">
                     {form.cover_image_url ? (
                       <div className="relative h-28 w-44 overflow-hidden rounded-xl border border-white/10 bg-zinc-900/80 shadow-inner ring-1 ring-white/5">
@@ -491,8 +491,8 @@ export function InventoryClient() {
                     </label>
                   </div>
                 </div>
-                <div className="col-span-2 space-y-3">
-                  <span className="text-xs text-zinc-500">
+                <div className="space-y-3 sm:col-span-2">
+                  <span className="text-xs font-medium text-zinc-400">
                     Galería ({form.gallery_urls.length}/5)
                   </span>
                   {form.gallery_urls.length > 0 && (

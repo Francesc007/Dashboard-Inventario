@@ -93,3 +93,18 @@ body {
 .animate-logo-silver-pulse {
   animation: logo-silver-pulse 2.75s ease-in-out infinite;
 }
+
+/* Formularios del panel: borde luminoso (inventario / reseñas) */
+@layer components {
+  .panel-field {
+    @apply mt-1 w-full rounded-lg border border-cyan-400/45 bg-gradient-to-b from-cyan-950/35 to-slate-950/55 px-3 py-2.5 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_0_0_1px_rgba(34,211,238,0.28),0_0_28px_-8px_rgba(6,182,212,0.45)];
+    @apply placeholder:text-zinc-500 transition-[box-shadow,border-color] duration-150;
+  }
+  .panel-field:focus,
+  .panel-field:focus-visible {
+    @apply border-cyan-400/65 outline-none ring-2 ring-cyan-400/50 ring-offset-2 ring-offset-[#0c0e18];
+  }
+  .panel-field:disabled {
+    @apply cursor-not-allowed opacity-60;
+  }
+}

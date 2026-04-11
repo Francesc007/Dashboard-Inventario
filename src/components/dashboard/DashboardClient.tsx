@@ -149,13 +149,13 @@ export function DashboardClient() {
 
   return (
     <div className="space-y-8">
-      <header className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-        <div>
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0 text-center sm:text-left">
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">
             SIGMA AI AGENCY
           </h1>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center justify-center gap-2 sm:justify-end">
           <span className="relative flex h-2.5 w-2.5">
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan-400 opacity-60" />
             <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-cyan-500" />
@@ -167,7 +167,7 @@ export function DashboardClient() {
         </div>
       </header>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           title="Vistas de autos"
           value={totals?.view_car ?? 0}
@@ -210,14 +210,14 @@ export function DashboardClient() {
         />
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-5">
+      <div className="grid min-w-0 gap-6 lg:grid-cols-5">
         <Card
-          className={`${DASHBOARD_CARD_GLOW} bg-gradient-to-b from-card to-card/50 lg:col-span-3`}
+          className={`min-w-0 ${DASHBOARD_CARD_GLOW} bg-gradient-to-b from-card to-card/50 lg:col-span-3`}
         >
           <CardHeader>
             <CardTitle>Interacciones por día (7 días)</CardTitle>
           </CardHeader>
-          <CardContent className="pt-2">
+          <CardContent className="min-w-0 overflow-x-auto pt-2">
             <AreaChart
               className="tremor-chart-transparent h-64"
               data={data?.timeline ?? []}
@@ -235,12 +235,12 @@ export function DashboardClient() {
         </Card>
 
         <Card
-          className={`${DASHBOARD_CARD_GLOW} bg-gradient-to-b from-card to-card/50 lg:col-span-2`}
+          className={`min-w-0 ${DASHBOARD_CARD_GLOW} bg-gradient-to-b from-card to-card/50 lg:col-span-2`}
         >
           <CardHeader>
             <CardTitle>Distribución de eventos</CardTitle>
           </CardHeader>
-          <CardContent className="pt-2">
+          <CardContent className="min-w-0 overflow-x-auto pt-2">
             <DonutChart
               className="h-64"
               data={pieData}
@@ -254,12 +254,12 @@ export function DashboardClient() {
         </Card>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card className={`${DASHBOARD_CARD_GLOW} bg-card/80`}>
+      <div className="grid min-w-0 gap-6 lg:grid-cols-2">
+        <Card className={`min-w-0 ${DASHBOARD_CARD_GLOW} bg-card/80`}>
           <CardHeader>
             <CardTitle>Top autos por interacciones</CardTitle>
           </CardHeader>
-          <CardContent className="pt-2">
+          <CardContent className="min-w-0 overflow-x-auto pt-2">
             <BarChart
               className="tremor-chart-transparent h-72"
               data={topCars}
@@ -274,7 +274,7 @@ export function DashboardClient() {
           </CardContent>
         </Card>
 
-        <Card className={`${DASHBOARD_CARD_GLOW} bg-card/80`}>
+        <Card className={`min-w-0 ${DASHBOARD_CARD_GLOW} bg-card/80`}>
           <CardHeader>
             <CardTitle>Actividad reciente</CardTitle>
           </CardHeader>
@@ -319,7 +319,7 @@ export function DashboardClient() {
         </Card>
       </div>
 
-      <Card className={`${DASHBOARD_CARD_GLOW} bg-card/80`}>
+      <Card className={`min-w-0 ${DASHBOARD_CARD_GLOW} bg-card/80`}>
         <CardHeader>
           <CardTitle>Detalle por vehículo</CardTitle>
         </CardHeader>
@@ -382,7 +382,7 @@ function StatCard({
 }) {
   return (
     <Card
-      className={`overflow-hidden border bg-gradient-to-br transition duration-200 ease-out will-change-transform hover:-translate-y-0.5 hover:shadow-lg ${glow} ${borderAccent} ${accent}`}
+      className={`min-w-0 overflow-hidden border bg-gradient-to-br transition duration-200 ease-out will-change-transform hover:-translate-y-0.5 hover:shadow-lg ${glow} ${borderAccent} ${accent}`}
     >
       <CardContent className="p-5">
         <div className="flex items-start justify-between gap-3">
