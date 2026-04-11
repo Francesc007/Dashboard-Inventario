@@ -25,32 +25,68 @@ const carSchema = z.object({
   gallery_urls: z.array(z.string().url()).max(5).optional().default([]),
 });
 
+export const dynamic = "force-dynamic"; // Evita caché
+
 export async function GET() {
   try {
     const supabase = createAdminClient();
-    const { data, error } = await supabase
-      .from("cars")
-      .select("*")
-      .order("created_at", { ascending: false });
+    const { data, error } = await supabase.from("cars").select("*");
 
     if (error) {
-      console.error(error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      const response = NextResponse.json(
+        { error: error.message },
+        { status: 500 },
+      );
+      response.headers.set("Access-Control-Allow-Origin", "*");
+      response.headers.set("Access-Control-Allow-Methods", "GET, OPTIONS");
+      response.headers.set(
+        "Access-Control-Allow-Headers",
+        "Content-Type, Authorization",
+      );
+      return response;
     }
 
     const cars = (data ?? []).map((row) =>
       normalizeCarImageUrls(row as CarRow),
     );
-    return NextResponse.json({ cars });
-  } catch (e) {
-    console.error(e);
-    return NextResponse.json(
-      { error: "Error de base de datos" },
-      { status: 500 },
+    const response = NextResponse.json({ cars });
+
+    // Cabeceras forzadas
+    response.headers.set(
+      "Access-Control-Allow-Origin",
+      "*",
+    ); // '*' es más permisivo para pruebas
+    response.headers.set("Access-Control-Allow-Methods", "GET, OPTIONS");
+    response.headers.set(
+      "Access-Control-Allow-Headers",
+      "Content-Type, Authorization",
     );
+
+    return response;
+  } catch {
+    const response = NextResponse.json({ error: "Error" }, { status: 500 });
+    response.headers.set("Access-Control-Allow-Origin", "*");
+    response.headers.set("Access-Control-Allow-Methods", "GET, OPTIONS");
+    response.headers.set(
+      "Access-Control-Allow-Headers",
+      "Content-Type, Authorization",
+    );
+    return response;
   }
 }
 
+export async function OPTIONS() {
+  const response = new NextResponse(null, { status: 204 });
+  response.headers.set("Access-Control-Allow-Origin", "*");
+  response.headers.set("Access-Control-Allow-Methods", "GET, OPTIONS");
+  response.headers.set(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization",
+  );
+  return response;
+}
+
+/** Creación desde el panel (requiere sesión). No aplica CORS público. */
 export async function POST(request: Request) {
   const unauthorized = await requireAuth();
   if (unauthorized) return unauthorized;
