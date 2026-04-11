@@ -51,7 +51,7 @@ create table if not exists public.reviews (
   updated_at timestamptz not null default now()
 );
 
-create table if not exists public.track_events (
+create table if not exists public.landing_interactions (
   id uuid primary key default gen_random_uuid(),
   car_id uuid references public.cars (id) on delete set null,
   event_type track_event_type not null,
@@ -59,14 +59,14 @@ create table if not exists public.track_events (
   created_at timestamptz not null default now()
 );
 
-create index if not exists idx_track_events_car_created
-  on public.track_events (car_id, created_at desc);
+create index if not exists idx_landing_interactions_car_created
+  on public.landing_interactions (car_id, created_at desc);
 
-create index if not exists idx_track_events_type_created
-  on public.track_events (event_type, created_at desc);
+create index if not exists idx_landing_interactions_type_created
+  on public.landing_interactions (event_type, created_at desc);
 
-create index if not exists idx_track_events_created
-  on public.track_events (created_at desc);
+create index if not exists idx_landing_interactions_created
+  on public.landing_interactions (created_at desc);
 
 create or replace function public.set_updated_at()
 returns trigger
@@ -92,10 +92,10 @@ create trigger reviews_updated_at
 -- Sin políticas, solo service_role / postgres acceden; preparado para añadir políticas por auth.
 alter table public.cars enable row level security;
 alter table public.reviews enable row level security;
-alter table public.track_events enable row level security;
+alter table public.landing_interactions enable row level security;
 
 -- Tiempo real para el dashboard (suscripción con anon + política de lectura opcional)
-alter publication supabase_realtime add table public.track_events;
+alter publication supabase_realtime add table public.landing_interactions;
 
 -- Bucket público para imágenes de inventario y reseñas
 insert into storage.buckets (id, name, public)
@@ -126,4 +126,4 @@ create policy "inventory_authenticated_delete"
 
 comment on table public.cars is 'Inventario de vehículos';
 comment on table public.reviews is 'Reseñas de clientes';
-comment on table public.track_events is 'Eventos de analytics (vistas, WhatsApp, formularios, leads)';
+comment on table public.landing_interactions is 'Eventos de analytics (vistas, WhatsApp, formularios, leads)';

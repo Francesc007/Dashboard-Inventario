@@ -100,7 +100,7 @@ await fetch(`${DASHBOARD_ORIGIN}/api/track`, {
 
 ## SQL y políticas (Supabase)
 
-- El archivo `supabase/migrations/001_initial.sql` crea tablas, índices, **RLS** activado y suscripción a **Realtime** en `track_events`.
+- El archivo `supabase/migrations/001_initial.sql` crea tablas, índices, **RLS** activado y suscripción a **Realtime** en `landing_interactions`.
 - Las escrituras desde la landing pasan por **Next.js** con `SUPABASE_SERVICE_ROLE_KEY` (nunca expongas esa clave en el navegador).
 
 ## Comportamiento en tiempo casi real

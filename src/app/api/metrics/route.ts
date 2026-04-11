@@ -34,7 +34,7 @@ export async function GET() {
     const since7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
     const { data: allEvents, error: e1 } = await supabase
-      .from("track_events")
+      .from("landing_interactions")
       .select("id, car_id, event_type, created_at, metadata");
 
     if (e1) {

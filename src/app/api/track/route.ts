@@ -60,7 +60,7 @@ export async function POST(request: Request) {
 
   try {
     const supabase = createAdminClient();
-    const { error } = await supabase.from("track_events").insert({
+    const { error } = await supabase.from("landing_interactions").insert({
       car_id: carId ?? null,
       event_type: eventType,
       metadata: metadata ?? {},

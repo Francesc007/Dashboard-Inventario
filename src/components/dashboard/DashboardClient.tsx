@@ -103,13 +103,13 @@ export function DashboardClient() {
     }
 
     const channel = supabase
-      .channel("dashboard-track-events")
+      .channel("dashboard-landing-interactions")
       .on(
         "postgres_changes",
         {
           event: "INSERT",
           schema: "public",
-          table: "track_events",
+          table: "landing_interactions",
         },
         () => {
           void load();
