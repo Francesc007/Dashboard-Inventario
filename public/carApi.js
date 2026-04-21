@@ -31,10 +31,61 @@
     };
   }
 
+  /**
+   * Envía un evento a POST /api/track del panel. **Siempre pasa carId** (UUID del coche)
+   * cuando el usuario interactúa en la ficha de un auto; si no, el dashboard no puede
+   * atribuir WA / form / leads a esa fila.
+   *
+   * @param {string} apiBase - Misma URL que en fetchCars (origen del panel).
+   * @param {{ eventType: string, carId?: string|null, metadata?: object, trackKey?: string }} opts
+   *   eventType: "view_car" | "whatsapp_click" | "form_submit" | "click_form" | "click_whatsapp" | "submit_lead"
+   *   carId: UUID del vehículo (campo `id` de cada coche devuelto por fetchCars).
+   */
+  function track(apiBase, opts) {
+    var base = (apiBase || "").replace(/\/+$/, "");
+    if (!base) {
+      return Promise.reject(new Error("carApi.track: falta apiBase"));
+    }
+    opts = opts || {};
+    var body = JSON.stringify({
+      eventType: opts.eventType,
+      carId: opts.carId != null ? opts.carId : null,
+      metadata: opts.metadata && typeof opts.metadata === "object" ? opts.metadata : {},
+    });
+    var headers = { "Content-Type": "application/json" };
+    var key = opts.trackKey || (typeof window !== "undefined" && window.__TRACK_API_KEY__);
+    if (key) headers["x-track-key"] = key;
+    return fetch(base + "/api/track", {
+      method: "POST",
+      headers: headers,
+      body: body,
+      mode: "cors",
+      credentials: "omit",
+    }).then(function (res) {
+      if (!res.ok) {
+        return res.text().then(function (txt) {
+          var msg = "HTTP " + res.status;
+          try {
+            var j = JSON.parse(txt);
+            if (j && j.error) msg = String(j.error);
+          } catch (_) {
+            if (txt) msg = txt.slice(0, 200);
+          }
+          throw new Error(msg);
+        });
+      }
+      return res.json().catch(function () {
+        return { ok: true };
+      });
+    });
+  }
+
   var api = {
     STORAGE_BUCKET: BUCKET,
 
     normalizeInventoryImageUrl: normalizeUrl,
+
+    track: track,
 
     /**
      * @param {string} apiBase - Origen del panel (sin barra final), p. ej. https://xxx.vercel.app

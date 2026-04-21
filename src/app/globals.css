@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+/* Tremor inyecta clases utilitarias desde node_modules; sin esto los colores
+   del DonutChart / leyendas no se generan y el gráfico se ve “vacío”. */
+@source "../../node_modules/@tremor/react/dist/**/*.js";
+
 /* Tema oscuro premium (Shadcn-style) — paleta azul marino, aqua, turquesa, azul rey */
 :root {
   --background: 222 47% 5%;
