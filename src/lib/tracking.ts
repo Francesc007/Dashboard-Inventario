@@ -1,7 +1,18 @@
 import type { TrackEventType } from "@/types";
 
+/** Tipos que acepta POST /api/track (incl. alias que normaliza el servidor). */
+export type TrackEventInput =
+  | TrackEventType
+  | "whatsapp_click"
+  | "form_submit"
+  | "car_view";
+
 type TrackOptions = {
   carId?: string | null;
+  /** Prioridad en API: agrupa métricas por esta columna. */
+  carLabel?: string | null;
+  /** Alias; si no hay carLabel se envía como car_label en servidor. */
+  vehicleName?: string | null;
   metadata?: Record<string, unknown>;
 };
 
@@ -35,8 +46,9 @@ function getPublicTrackKey(): string | undefined {
     return process.env.NEXT_PUBLIC_TRACK_KEY;
   }
   try {
-    return (import.meta as unknown as { env?: { NEXT_PUBLIC_TRACK_KEY?: string } })
-      .env?.NEXT_PUBLIC_TRACK_KEY;
+    return (
+      import.meta as unknown as { env?: { NEXT_PUBLIC_TRACK_KEY?: string } }
+    ).env?.NEXT_PUBLIC_TRACK_KEY;
   } catch {
     return undefined;
   }
@@ -47,7 +59,7 @@ function getPublicTrackKey(): string | undefined {
  * Requiere `NEXT_PUBLIC_API_URL` apuntando al origen del panel (sin `/api/track`).
  */
 export async function trackEvent(
-  eventType: TrackEventType,
+  eventType: TrackEventInput,
   options?: TrackOptions,
 ): Promise<void> {
   const base = getPublicApiBase();
@@ -70,10 +82,20 @@ export async function trackEvent(
     headers["x-track-key"] = key;
   }
 
+  const meta = { ...(options?.metadata ?? {}) };
+  const label =
+    options?.carLabel?.trim() || options?.vehicleName?.trim() || "";
+  if (label) {
+    meta.car_label = label;
+    meta.vehicle_name = label;
+  }
+
   const body = JSON.stringify({
     eventType,
     carId: options?.carId ?? null,
-    metadata: options?.metadata ?? {},
+    carLabel: options?.carLabel?.trim() || undefined,
+    vehicleName: options?.vehicleName?.trim() || undefined,
+    metadata: meta,
   });
 
   try {

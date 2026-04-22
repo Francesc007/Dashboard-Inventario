@@ -2,7 +2,14 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { AreaChart } from "@tremor/react";
+import {
+  Area,
+  AreaChart as RechartsAreaChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  XAxis,
+  YAxis,
+} from "recharts";
 import {
   Activity,
   MousePointerClick,
@@ -13,17 +20,36 @@ import {
 import { createClient } from "@/lib/supabase/browser";
 import type { TrackEventType } from "@/types";
 import { METRICS_TIMEZONE } from "@/lib/metrics-timezone";
-import { formatIntegerThousands } from "@/lib/utils";
+import { cn, formatIntegerThousands } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+
+const CONSULTA_GENERAL_LABEL = "Consulta General";
+
+/** Vistas, Form y Leads: sin mostrar 0 en celdas del detalle. */
+function detailColHideZero(n: number): string | number {
+  return n === 0 ? "" : n;
+}
+
+/** Consulta General: total coherente con lo mostrado (vistas + WA; sin form/leads). */
+function consultaGeneralDisplayedTotal(row: {
+  counts: Record<TrackEventType, number>;
+}): number {
+  return row.counts.view_car + row.counts.click_whatsapp;
+}
+
+type MetricsRange = "7d" | "today";
 
 type MetricsPayload = {
   totals: Record<TrackEventType, number>;
   totals24h: Record<TrackEventType, number>;
   leadsTotal: number;
   whatsappTotal: number;
+  conversionRate: number | null;
+  metricsRange: MetricsRange;
   timeline: { date: string; interacciones: number }[];
   byCar: {
     carId: string | null;
+    carLabel: string;
     brand: string;
     model: string;
     total: number;
@@ -36,6 +62,7 @@ type MetricsPayload = {
     createdAt: string;
     metadata: unknown;
     carLabel: string | null;
+    activityLabel: string;
   }[];
   generatedAt: string;
 };
@@ -74,42 +101,132 @@ const STAT_CARD_GLOW: Record<"vistas" | "whatsapp" | "formulario" | "leads", str
       "shadow-[0_0_0_1px_rgba(34,211,238,0.55),0_0_34px_rgba(6,182,212,0.32),0_0_52px_-8px_rgba(14,165,233,0.18)] ring-1 ring-cyan-400/45",
   };
 
-/** Colores alineados con las StatCard y la leyenda del donut (orden fijo por tipo). */
-const EVENT_COLOR_HEX: Record<TrackEventType, string> = {
-  view_car: "#a855f7",
-  click_whatsapp: "#22c55e",
-  click_form: "#f59e0b",
-  submit_lead: "#06b6d4",
-};
+/**
+ * Misma métrica y orden que las tarjetas principales: WA, Vistas, Form, Leads.
+ */
+const MAIN_METRICS_PIE_COLORS = [
+  "#22c55e",
+  "#5b21b6",
+  "#f59e0b",
+  "#06b6d4",
+] as const;
 
-const PIE_EVENT_ORDER: TrackEventType[] = [
-  "view_car",
-  "click_whatsapp",
-  "click_form",
-  "submit_lead",
-];
-
-/** Clases fijas (Tailwind debe ver literales completos en el bundle). */
-const PIE_LEGEND_DOT_CLASS = [
-  "bg-[#a855f7]",
+const MAIN_METRICS_PIE_LEGEND_DOT = [
   "bg-[#22c55e]",
+  "bg-[#5b21b6]",
   "bg-[#f59e0b]",
   "bg-[#06b6d4]",
 ] as const;
 
-const eventLabels: Record<TrackEventType, string> = {
-  view_car: "Vistas",
-  click_whatsapp: "WhatsApp",
-  click_form: "Formulario",
-  submit_lead: "Leads",
-};
+/** Escala del eje Y del área (interacciones/día): máximo redondeado según los datos. */
+function niceYAxisMaxForTimeline(values: number[]): number {
+  const maxVal = Math.max(0, ...values);
+  if (maxVal <= 0) return 5;
+  if (maxVal <= 5) return 5;
+  if (maxVal <= 10) return 10;
+  const padded = Math.ceil(maxVal * 1.12);
+  const magnitude = 10 ** Math.floor(Math.log10(padded));
+  return Math.max(10, Math.ceil(padded / magnitude) * magnitude);
+}
 
-/**
- * Sin UI de tooltip. `showTooltip={false}` en Tremor usa `Fragment` y con React 19
- * Recharts intenta pasar `wrapperStyle` al contenido, lo que dispara error en consola.
- */
-function NoopTremorTooltip() {
-  return null;
+/** Valores del eje Y junto a cada línea horizontal (p. ej. 0,1,2… o 0,2,4…). */
+function computeYAxisTicks(yMax: number): number[] {
+  if (yMax <= 0) return [0, 1, 2, 3, 4, 5];
+  let step = Math.ceil(yMax / 5);
+  if (step < 1) step = 1;
+  const magnitude = 10 ** Math.floor(Math.log10(step));
+  const normalized = magnitude > 0 ? step / magnitude : step;
+  if (normalized <= 1) step = magnitude;
+  else if (normalized <= 2) step = 2 * magnitude;
+  else if (normalized <= 5) step = 5 * magnitude;
+  else step = 10 * magnitude;
+  const ticks: number[] = [];
+  for (let v = 0; v <= yMax; v += step) {
+    ticks.push(v);
+  }
+  if (ticks[ticks.length - 1] < yMax) ticks.push(yMax);
+  return ticks;
+}
+
+const INTERACCIONES_AREA_GRADIENT_ID = "dashboard-interacciones-area-fill";
+
+function InteractionsTimelineChart({
+  rows,
+  yMax,
+}: {
+  rows: { date: string; interacciones: number; label: string }[];
+  yMax: number;
+}) {
+  const ticks = computeYAxisTicks(yMax);
+  if (rows.length === 0) {
+    return (
+      <div className="flex min-h-[15rem] items-center justify-center text-sm text-muted-foreground">
+        Sin datos aún
+      </div>
+    );
+  }
+  return (
+    <div className="tremor-chart-transparent h-full min-h-[15rem] w-full">
+      <ResponsiveContainer width="100%" height="100%" minHeight={240}>
+        <RechartsAreaChart
+          data={rows}
+          margin={{ top: 8, right: 8, left: 2, bottom: 6 }}
+        >
+          <defs>
+            <linearGradient
+              id={INTERACCIONES_AREA_GRADIENT_ID}
+              x1="0"
+              y1="0"
+              x2="0"
+              y2="1"
+            >
+              <stop
+                offset="5%"
+                stopColor="rgb(34, 211, 238)"
+                stopOpacity={0.42}
+              />
+              <stop
+                offset="92%"
+                stopColor="rgb(34, 211, 238)"
+                stopOpacity={0.04}
+              />
+            </linearGradient>
+          </defs>
+          <CartesianGrid
+            strokeDasharray="3 3"
+            vertical={false}
+            stroke="hsl(var(--border))"
+            opacity={0.75}
+          />
+          <XAxis dataKey="label" hide />
+          <YAxis
+            width={44}
+            domain={[0, yMax]}
+            ticks={ticks}
+            tick={{
+              fill: "hsl(var(--foreground))",
+              fontSize: 11,
+              fontWeight: 500,
+            }}
+            axisLine={false}
+            tickLine={false}
+            tickFormatter={(v) => formatIntegerThousands(Number(v))}
+            allowDecimals={false}
+          />
+          <Area
+            type="monotone"
+            dataKey="interacciones"
+            name="Interacciones"
+            stroke="rgb(34, 211, 238)"
+            strokeWidth={2}
+            fill={`url(#${INTERACCIONES_AREA_GRADIENT_ID})`}
+            isAnimationActive
+            animationDuration={550}
+          />
+        </RechartsAreaChart>
+      </ResponsiveContainer>
+    </div>
+  );
 }
 
 /** Barras horizontales sin Recharts: nombres y totales siempre visibles (sin cajas al hover). */
@@ -158,8 +275,31 @@ function TopModelsBars({
   );
 }
 
-/** Donut con colores hex reales (sin depender de clases Tremor/Tailwind en node_modules). */
-function EventDistributionDonut({
+/** Arco semicircular (abre hacia arriba): de izquierda a derecha por el “techo”. */
+function semiArcPathD(cx: number, cy: number, r: number): string {
+  return `M ${cx - r} ${cy} A ${r} ${r} 0 1 1 ${cx + r} ${cy}`;
+}
+
+function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const h = hex.replace("#", "");
+  return {
+    r: parseInt(h.slice(0, 2), 16),
+    g: parseInt(h.slice(2, 4), 16),
+    b: parseInt(h.slice(4, 6), 16),
+  };
+}
+
+function mixHex(hex: string, toward: "white" | "black", t: number): string {
+  const { r, g, b } = hexToRgb(hex);
+  const m = toward === "white" ? 255 : 0;
+  const l = (x: number) => Math.round(x + (m - x) * t);
+  return `rgb(${l(r)},${l(g)},${l(b)})`;
+}
+
+/**
+ * Distribución como arcos concéntricos semicirculares; relieve 3D (perspectiva, sombra, degradado en trazo).
+ */
+function EventDistributionRadial({
   data,
   colors,
 }: {
@@ -169,30 +309,147 @@ function EventDistributionDonut({
   const total = data.reduce((s, d) => s + d.value, 0);
   if (total === 0) {
     return (
-      <div className="flex h-64 items-center justify-center text-sm text-muted-foreground">
+      <div className="flex h-52 min-w-[200px] items-center justify-center text-sm text-muted-foreground">
         Sin eventos
       </div>
     );
   }
-  let cum = 0;
-  const stops: string[] = [];
-  data.forEach((d, i) => {
-    const startDeg = (cum / total) * 360;
-    cum += d.value;
-    const endDeg = (cum / total) * 360;
-    stops.push(
-      `${colors[i % colors.length]} ${startDeg}deg ${endDeg}deg`,
-    );
-  });
-  const gradient = `conic-gradient(from -90deg, ${stops.join(", ")})`;
+
+  const cx = 100;
+  const cy = 100;
+  const radii = [86, 68, 50, 32];
+  const strokeW = 7;
+
   return (
-    <div className="flex justify-center">
-      <div className="relative h-56 w-56 shrink-0">
-        <div
-          className="h-full w-full rounded-full shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]"
-          style={{ background: gradient }}
-        />
-        <div className="absolute left-1/2 top-1/2 h-[46%] w-[46%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-card ring-1 ring-white/10" />
+    <div className="relative flex w-full flex-col items-center pb-2 pt-1 [perspective:640px]">
+      {/* Sombra de suelo (profundidad) */}
+      <div
+        className="pointer-events-none absolute left-1/2 top-[72%] z-0 h-[11%] w-[68%] max-w-[280px] -translate-x-1/2 rounded-[100%] bg-black/40 blur-[22px]"
+        aria-hidden
+      />
+      <div
+        className="relative z-10 w-full max-w-[320px] origin-center [transform:rotateX(10deg)]"
+        style={{ transformStyle: "preserve-3d" }}
+      >
+        <svg
+          viewBox="0 0 200 118"
+          className="h-auto w-full overflow-visible drop-shadow-[0_16px_32px_rgba(0,0,0,0.5),0_4px_12px_rgba(0,0,0,0.35)]"
+          aria-hidden
+        >
+          <defs>
+            <radialGradient id="radialArcSheenGlobal" cx="42%" cy="35%" r="65%">
+              <stop offset="0%" stopColor="#fff" stopOpacity="0.5" />
+              <stop offset="55%" stopColor="#fff" stopOpacity="0" />
+            </radialGradient>
+            <filter
+              id="radialArcSoftGlow"
+              x="-40%"
+              y="-40%"
+              width="180%"
+              height="180%"
+            >
+              <feGaussianBlur in="SourceGraphic" stdDeviation="1.6" result="b" />
+              <feMerge>
+                <feMergeNode in="b" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+            {colors.map((c, i) => (
+              <linearGradient
+                key={i}
+                id={`arcStroke3d-${i}`}
+                x1="100"
+                y1="48"
+                x2="100"
+                y2="108"
+                gradientUnits="userSpaceOnUse"
+              >
+                <stop offset="0%" stopColor={mixHex(c, "white", 0.38)} />
+                <stop offset="45%" stopColor={c} />
+                <stop offset="100%" stopColor={mixHex(c, "black", 0.35)} />
+              </linearGradient>
+            ))}
+          </defs>
+
+          <ellipse
+            cx={cx}
+            cy={cy - 38}
+            rx="78"
+            ry="36"
+            fill="url(#radialArcSheenGlobal)"
+            className="pointer-events-none opacity-[0.22]"
+          />
+
+          {radii.map((r, i) => {
+            const v = data[i]?.value ?? 0;
+            const share = v / total;
+            const d = semiArcPathD(cx, cy, r);
+
+            return (
+              <g key={i}>
+                {/* “Extrusión” sutil detrás del trazo coloreado */}
+                {share > 0 && (
+                  <path
+                    d={d}
+                    fill="none"
+                    stroke="rgba(0,0,0,0.35)"
+                    strokeWidth={strokeW}
+                    strokeLinecap="round"
+                    transform="translate(1.5, 2.2)"
+                    opacity={0.55}
+                  />
+                )}
+                <path
+                  d={d}
+                  fill="none"
+                  stroke="rgba(255,255,255,0.08)"
+                  strokeWidth={strokeW}
+                  strokeLinecap="round"
+                />
+                {share > 0 && (
+                  <motion.path
+                    d={d}
+                    fill="none"
+                    pathLength={1}
+                    stroke={`url(#arcStroke3d-${i})`}
+                    strokeWidth={strokeW}
+                    strokeLinecap="round"
+                    filter="url(#radialArcSoftGlow)"
+                    initial={{ pathLength: 0, opacity: 0.88 }}
+                    animate={{ pathLength: share, opacity: 1 }}
+                    transition={{
+                      pathLength: {
+                        duration: 0.9,
+                        delay: 0.07 * i,
+                        ease: [0.22, 1, 0.36, 1],
+                      },
+                      opacity: { duration: 0.35, delay: 0.07 * i },
+                    }}
+                  />
+                )}
+              </g>
+            );
+          })}
+
+          <text
+            x={cx}
+            y={cy - 4}
+            textAnchor="middle"
+            className="fill-foreground text-[17px] font-semibold drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)]"
+            style={{ fontFamily: "inherit" }}
+          >
+            {formatIntegerThousands(total)}
+          </text>
+          <text
+            x={cx}
+            y={cy + 14}
+            textAnchor="middle"
+            className="fill-muted-foreground text-[9px] uppercase tracking-wider drop-shadow-[0_1px_1px_rgba(0,0,0,0.35)]"
+            style={{ fontFamily: "inherit" }}
+          >
+            eventos
+          </text>
+        </svg>
       </div>
     </div>
   );
@@ -202,9 +459,12 @@ export function DashboardClient() {
   const [data, setData] = useState<MetricsPayload | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [pulse, setPulse] = useState(0);
+  const [metricsRange, setMetricsRange] = useState<MetricsRange>("7d");
 
   const load = useCallback(async () => {
-    const res = await fetch("/api/metrics", { cache: "no-store" });
+    const res = await fetch(`/api/metrics?range=${metricsRange}`, {
+      cache: "no-store",
+    });
     if (!res.ok) {
       setErr("No se pudieron cargar las métricas");
       return;
@@ -213,7 +473,7 @@ export function DashboardClient() {
     setData(json);
     setErr(null);
     setPulse((p) => p + 1);
-  }, []);
+  }, [metricsRange]);
 
   useEffect(() => {
     const t = setTimeout(() => void load(), 0);
@@ -257,59 +517,150 @@ export function DashboardClient() {
     );
   }
 
-  const totals = data?.totals;
-  const pieData = totals
-    ? PIE_EVENT_ORDER.map((k) => ({
-        name: eventLabels[k],
-        value: Number(totals[k]) || 0,
-      }))
-    : [];
-
   const areaChartRows = timelineRowsForChart(data?.timeline);
+  const areaChartYMax = niceYAxisMaxForTimeline(
+    areaChartRows.map((r) => r.interacciones),
+  );
 
-  const topCars = (data?.byCar ?? [])
-    .filter((c) => c.carId)
-    .slice(0, 8)
-    .map((c) => ({
-      id: c.carId as string,
-      name: `${c.brand} ${c.model}`.trim().slice(0, 56),
+  const TOP_MODELS_MAX = 8;
+  const rawByCar = data?.byCar ?? [];
+  const consultaForTop = rawByCar.filter(
+    (r) => r.carLabel === CONSULTA_GENERAL_LABEL,
+  );
+  const vehiclesForTop = rawByCar.filter(
+    (r) => r.carLabel !== CONSULTA_GENERAL_LABEL,
+  );
+  const sortedVehiclesForTop = [...vehiclesForTop].sort(
+    (a, b) => b.total - a.total,
+  );
+  const vehicleSlots =
+    consultaForTop.length > 0
+      ? TOP_MODELS_MAX - consultaForTop.length
+      : TOP_MODELS_MAX;
+  const topCars = [
+    ...sortedVehiclesForTop.slice(0, Math.max(0, vehicleSlots)).map((c) => ({
+      id: c.carId ?? `lbl-${c.carLabel}`,
+      name: c.carLabel.slice(0, 56),
       interacciones: c.total,
-    }));
+    })),
+    ...consultaForTop.map((c) => ({
+      id: c.carId ?? `lbl-${c.carLabel}`,
+      name: `WA · ${c.carLabel}`.slice(0, 56),
+      interacciones: consultaGeneralDisplayedTotal(c),
+    })),
+  ];
+
+  const detailRaw = data?.byCar ?? [];
+  const detailConsulta = detailRaw.filter(
+    (r) => r.carLabel === CONSULTA_GENERAL_LABEL,
+  );
+  const detailVehicles = detailRaw.filter(
+    (r) => r.carLabel !== CONSULTA_GENERAL_LABEL,
+  );
+  const detailTableRows = [
+    ...[...detailVehicles].sort((a, b) => b.total - a.total),
+    ...detailConsulta,
+  ];
+
+  /** Vistas, Form y Leads del encabezado: solo filas de modelos (sin Consulta General). */
+  const detailTotalsModelsOnly = detailVehicles.reduce(
+    (acc, row) => {
+      const leads = row.counts.click_whatsapp + row.counts.submit_lead;
+      return {
+        view_car: acc.view_car + row.counts.view_car,
+        submit_lead: acc.submit_lead + row.counts.submit_lead,
+        leads: acc.leads + leads,
+        rowTotalSum: acc.rowTotalSum + row.total,
+      };
+    },
+    { view_car: 0, submit_lead: 0, leads: 0, rowTotalSum: 0 },
+  );
+
+  /** WhatsApp en encabezado: suma de toda la columna (modelos + Consulta General). */
+  const detailTotalsWhatsappAll = detailTableRows.reduce(
+    (s, row) => s + row.counts.click_whatsapp,
+    0,
+  );
+
+  /** Total (última columna): suma de lo mostrado en cada fila. */
+  const detailGrandTotal =
+    detailTotalsModelsOnly.rowTotalSum +
+    detailConsulta.reduce((s, row) => s + consultaGeneralDisplayedTotal(row), 0);
+
+  const detailConversionRate =
+    detailTotalsModelsOnly.view_car > 0
+      ? Math.round(
+          (detailTotalsModelsOnly.leads / detailTotalsModelsOnly.view_car) *
+            1000,
+        ) / 10
+      : null;
+
+  const mainMetricsPie = data
+    ? [
+        { name: "WA", value: detailTotalsWhatsappAll },
+        { name: "Vistas", value: detailTotalsModelsOnly.view_car },
+        { name: "Form", value: detailTotalsModelsOnly.submit_lead },
+        { name: "Leads", value: detailTotalsModelsOnly.leads },
+      ]
+    : [];
+  const mainMetricsPieTotal = mainMetricsPie.reduce((s, r) => s + r.value, 0);
 
   return (
     <div className="space-y-8">
-      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0 text-center sm:text-left">
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">
             SIGMA AI AGENCY
           </h1>
         </div>
-        <div className="flex items-center justify-center gap-2 sm:justify-end">
-          <span className="relative flex h-2.5 w-2.5">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan-400 opacity-60" />
-            <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-cyan-500" />
-          </span>
-          <span className="flex items-center gap-1.5 text-xs font-medium text-cyan-400/90">
-            <Radio className="h-3.5 w-3.5" aria-hidden />
-            Conectado
-          </span>
+        <div className="mt-3 flex flex-row flex-wrap items-center justify-center gap-3 sm:mt-5 sm:justify-end sm:gap-4">
+          <div className="flex items-center gap-2">
+            <span className="relative flex h-2.5 w-2.5">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan-400 opacity-60" />
+              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-cyan-500" />
+            </span>
+            <span className="flex items-center gap-1.5 text-xs font-medium text-cyan-400/90">
+              <Radio className="h-3.5 w-3.5" aria-hidden />
+              Conectado
+            </span>
+          </div>
+          <div
+            className="inline-flex rounded-lg border border-cyan-500/35 bg-muted/25 p-0.5 shadow-inner shadow-black/20"
+            role="group"
+            aria-label="Rango de fechas de las métricas"
+          >
+            <button
+              type="button"
+              onClick={() => setMetricsRange("7d")}
+              className={cn(
+                "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                metricsRange === "7d"
+                  ? "bg-cyan-500/25 text-cyan-100 shadow-sm ring-1 ring-cyan-400/40"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              Últimos 7 días
+            </button>
+            <button
+              type="button"
+              onClick={() => setMetricsRange("today")}
+              className={cn(
+                "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                metricsRange === "today"
+                  ? "bg-cyan-500/25 text-cyan-100 shadow-sm ring-1 ring-cyan-400/40"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              Hoy
+            </button>
+          </div>
         </div>
       </header>
 
       <div className="grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
-          title="Vistas de autos"
-          value={totals?.view_car ?? 0}
-          icon={<Activity className="h-5 w-5" />}
-          accent="from-violet-600/25 via-purple-950/45 to-slate-950/40"
-          borderAccent="border-violet-400/50"
-          iconAccent="bg-violet-500/15 text-violet-200"
-          glow={STAT_CARD_GLOW.vistas}
-          pulseKey={pulse}
-        />
-        <StatCard
-          title="Clics WhatsApp"
-          value={totals?.click_whatsapp ?? 0}
+          title="WA"
+          value={detailTotalsWhatsappAll}
           icon={<Phone className="h-5 w-5" />}
           accent="from-green-500/25 via-emerald-950/40 to-slate-950/35"
           borderAccent="border-green-400/50"
@@ -318,8 +669,18 @@ export function DashboardClient() {
           pulseKey={pulse}
         />
         <StatCard
-          title="Clics en formulario"
-          value={totals?.click_form ?? 0}
+          title="Vistas"
+          value={detailTotalsModelsOnly.view_car}
+          icon={<Activity className="h-5 w-5" />}
+          accent="from-violet-600/25 via-purple-950/45 to-slate-950/40"
+          borderAccent="border-violet-400/50"
+          iconAccent="bg-violet-500/15 text-violet-200"
+          glow={STAT_CARD_GLOW.vistas}
+          pulseKey={pulse}
+        />
+        <StatCard
+          title="Form"
+          value={detailTotalsModelsOnly.submit_lead}
           icon={<MousePointerClick className="h-5 w-5" />}
           accent="from-amber-500/20 via-orange-950/35 to-amber-950/20"
           borderAccent="border-amber-400/50"
@@ -328,14 +689,26 @@ export function DashboardClient() {
           pulseKey={pulse}
         />
         <StatCard
-          title="Leads generados"
-          value={totals?.submit_lead ?? 0}
+          title="Leads"
+          value={detailTotalsModelsOnly.leads}
           icon={<UserPlus className="h-5 w-5" />}
           accent="from-cyan-500/25 via-sky-950/35 to-slate-950/35"
           borderAccent="border-cyan-400/50"
           iconAccent="bg-cyan-500/15 text-cyan-200"
           glow={STAT_CARD_GLOW.leads}
           pulseKey={pulse}
+          footer={
+            <div className="space-y-1">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-cyan-100/90">
+                % de conversión
+              </p>
+              <p className="text-lg font-bold tabular-nums leading-none text-white">
+                {detailConversionRate != null
+                  ? `${detailConversionRate.toLocaleString("es-MX", { minimumFractionDigits: 0, maximumFractionDigits: 1 })}%`
+                  : "—"}
+              </p>
+            </div>
+          }
         />
       </div>
 
@@ -344,38 +717,16 @@ export function DashboardClient() {
           className={`flex min-h-0 h-full min-w-0 flex-col ${DASHBOARD_CARD_GLOW} bg-gradient-to-b from-card to-card/50`}
         >
           <CardHeader className="shrink-0 pb-2">
-            <CardTitle className="text-base text-foreground">
-              Interacciones por día (7 días)
+            <CardTitle className="uppercase tracking-wide">
+              Interacciones por día
+              {metricsRange === "today" ? " (hoy)" : " (últimos 7 días)"}
             </CardTitle>
           </CardHeader>
           <CardContent className="flex min-h-0 flex-1 flex-col overflow-x-auto pt-0 pb-5">
             <div className="min-h-[15rem] w-full flex-1">
-              <AreaChart
-                className="tremor-chart-transparent h-full min-h-[15rem] [&_.recharts-tooltip-wrapper]:hidden [&_.recharts-tooltip-cursor]:hidden"
-                data={areaChartRows}
-                index="label"
-                categories={["interacciones"]}
-                colors={["cyan"]}
-                showLegend={true}
-                showGridLines={true}
-                showAnimation={true}
-                curveType="natural"
-                showGradient={true}
-                customTooltip={NoopTremorTooltip}
-                valueFormatter={(v) =>
-                  Number.isFinite(Number(v))
-                    ? formatIntegerThousands(Math.round(Number(v)))
-                    : String(v)
-                }
-                yAxisWidth={44}
-                padding={{ left: 4, right: 4 }}
-                rotateLabelX={{
-                  angle: -32,
-                  verticalShift: 2,
-                  xAxisHeight: 44,
-                }}
-                tickGap={6}
-                noDataText="Sin datos aún"
+              <InteractionsTimelineChart
+                rows={areaChartRows}
+                yMax={areaChartYMax}
               />
             </div>
             <p className="-mt-1 mb-0.5 text-center text-[11px] font-medium tracking-wide text-muted-foreground">
@@ -391,7 +742,9 @@ export function DashboardClient() {
                     className="flex min-w-[2.75rem] shrink-0 snap-center flex-col items-center gap-0.5 py-0.5 text-center sm:min-w-0"
                   >
                     <span className="text-xs font-semibold tabular-nums text-cyan-400/95">
-                      {formatIntegerThousands(row.interacciones)}
+                      {row.interacciones === 0
+                        ? "—"
+                        : formatIntegerThousands(row.interacciones)}
                     </span>
                     <span className="text-[10px] tabular-nums leading-none text-muted-foreground/85">
                       {row.label}
@@ -406,27 +759,48 @@ export function DashboardClient() {
           className={`flex min-h-0 h-full min-w-0 flex-col ${DASHBOARD_CARD_GLOW} bg-gradient-to-b from-card to-card/50`}
         >
           <CardHeader className="shrink-0 pb-2">
-            <CardTitle>Distribución de eventos</CardTitle>
+            <CardTitle className="uppercase tracking-wide">
+              Distribución de eventos
+            </CardTitle>
           </CardHeader>
-          <CardContent className="flex min-h-0 flex-1 flex-col items-center justify-center gap-5 overflow-x-auto pt-0 pb-5">
-            <EventDistributionDonut
-              data={pieData}
-              colors={PIE_EVENT_ORDER.map((k) => EVENT_COLOR_HEX[k])}
+          <CardContent className="flex min-h-0 flex-1 flex-col gap-5 overflow-x-auto pt-0 pb-5">
+            <EventDistributionRadial
+              data={mainMetricsPie}
+              colors={MAIN_METRICS_PIE_COLORS}
             />
-            <div
-              className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-sm"
+            <ul
+              className="w-full min-w-0 space-y-2.5 text-sm"
               aria-label="Leyenda de tipos de evento"
             >
-              {pieData.map((row, i) => (
-                <div key={row.name} className="flex items-center gap-2">
-                  <span
-                    className={`h-2.5 w-2.5 shrink-0 rounded-full ${PIE_LEGEND_DOT_CLASS[i] ?? "bg-zinc-500"}`}
-                    aria-hidden
-                  />
-                  <span className="text-muted-foreground">{row.name}</span>
-                </div>
-              ))}
-            </div>
+              {mainMetricsPie.map((row, i) => {
+                const pct =
+                  mainMetricsPieTotal > 0
+                    ? Math.round((row.value / mainMetricsPieTotal) * 100)
+                    : 0;
+                return (
+                  <li
+                    key={`${row.name}-${i}`}
+                    className="flex items-center justify-between gap-3 border-b border-border/35 pb-2.5 last:border-0 last:pb-0"
+                  >
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span
+                        className={`h-2.5 w-2.5 shrink-0 rounded-full ${MAIN_METRICS_PIE_LEGEND_DOT[i] ?? "bg-zinc-500"}`}
+                        aria-hidden
+                      />
+                      <span className="truncate text-muted-foreground">
+                        {row.name}
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-right tabular-nums text-foreground/90">
+                      {formatIntegerThousands(row.value)}
+                      <span className="ml-1.5 text-xs text-muted-foreground">
+                        ({pct}%)
+                      </span>
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
           </CardContent>
         </Card>
       </div>
@@ -434,7 +808,9 @@ export function DashboardClient() {
       <div className="grid min-w-0 gap-6 lg:grid-cols-2">
         <Card className={`min-w-0 ${DASHBOARD_CARD_GLOW} bg-card/80`}>
           <CardHeader>
-            <CardTitle>Interacciones por modelos</CardTitle>
+            <CardTitle className="uppercase tracking-wide">
+              Interacciones por modelos
+            </CardTitle>
           </CardHeader>
           <CardContent className="min-w-0 pt-2">
             <TopModelsBars rows={topCars} />
@@ -443,7 +819,9 @@ export function DashboardClient() {
 
         <Card className={`min-w-0 ${DASHBOARD_CARD_GLOW} bg-card/80`}>
           <CardHeader>
-            <CardTitle>Actividad reciente</CardTitle>
+            <CardTitle className="uppercase tracking-wide">
+              Actividad reciente
+            </CardTitle>
           </CardHeader>
           <CardContent className="pt-2">
             {(data?.recentEvents?.length ?? 0) === 0 ? (
@@ -461,13 +839,9 @@ export function DashboardClient() {
                       exit={{ opacity: 0 }}
                       className="flex items-center justify-between gap-3 rounded-lg border border-cyan-900/40 bg-muted/30 px-3 py-2 text-xs"
                     >
-                      <div>
+                      <div className="min-w-0">
                         <p className="font-medium text-foreground">
-                          {eventLabels[e.eventType as TrackEventType] ??
-                            e.eventType}
-                        </p>
-                        <p className="text-muted-foreground">
-                          {e.carLabel || "Sin vehículo asociado"}
+                          {e.activityLabel ?? e.eventType ?? "Evento"}
                         </p>
                       </div>
                       <time
@@ -492,38 +866,81 @@ export function DashboardClient() {
 
       <Card className={`min-w-0 ${DASHBOARD_CARD_GLOW} bg-card/80`}>
         <CardHeader>
-          <CardTitle>Detalle por vehículo</CardTitle>
+          <CardTitle className="uppercase tracking-wide">
+            Detalle por vehículo
+          </CardTitle>
         </CardHeader>
         <CardContent className="overflow-x-auto pt-2">
           <table className="w-full min-w-[640px] text-left text-sm">
             <thead>
               <tr className="border-b border-border text-muted-foreground">
-                <th className="pb-3 pr-4 font-medium">Vehículo</th>
-                <th className="pb-3 pr-4 font-medium">Vistas</th>
-                <th className="pb-3 pr-4 font-medium">WhatsApp</th>
-                <th className="pb-3 pr-4 font-medium">Form</th>
-                <th className="pb-3 pr-4 font-medium">Leads</th>
-                <th className="pb-3 font-medium">Total</th>
+                <th className="pb-3 pr-4 text-left font-medium">Vehículo</th>
+                <th className="pb-3 px-2 text-center font-medium">WhatsApp</th>
+                <th className="pb-3 px-2 text-center font-medium">Vistas</th>
+                <th className="pb-3 px-2 text-center font-medium">Form</th>
+                <th className="pb-3 px-2 text-center font-medium">Leads</th>
+                <th className="pb-3 pl-2 text-center font-medium">Total</th>
               </tr>
             </thead>
             <tbody>
-              {(data?.byCar ?? []).map((row) => (
-                <tr
-                  key={row.carId ?? "none"}
-                  className="border-b border-border/50 text-foreground/90 last:border-0"
-                >
-                  <td className="py-3 pr-4">
-                    {row.brand} {row.model}
-                  </td>
-                  <td className="py-3 pr-4">{row.counts.view_car}</td>
-                  <td className="py-3 pr-4">{row.counts.click_whatsapp}</td>
-                  <td className="py-3 pr-4">{row.counts.click_form}</td>
-                  <td className="py-3 pr-4">{row.counts.submit_lead}</td>
-                  <td className="py-3 font-semibold text-foreground">
-                    {row.total}
-                  </td>
-                </tr>
-              ))}
+              <tr className="border-b-2 border-border bg-muted/25 text-foreground">
+                <td className="py-3 pr-4 text-left font-semibold">Total</td>
+                <td className="py-3 px-2 text-center tabular-nums font-medium">
+                  {formatIntegerThousands(detailTotalsWhatsappAll)}
+                </td>
+                <td className="py-3 px-2 text-center tabular-nums font-medium">
+                  {formatIntegerThousands(detailTotalsModelsOnly.view_car)}
+                </td>
+                <td className="py-3 px-2 text-center tabular-nums font-medium">
+                  {formatIntegerThousands(detailTotalsModelsOnly.submit_lead)}
+                </td>
+                <td className="py-3 px-2 text-center tabular-nums font-medium">
+                  {formatIntegerThousands(detailTotalsModelsOnly.leads)}
+                </td>
+                <td className="py-3 pl-2 text-center tabular-nums font-semibold text-foreground">
+                  {formatIntegerThousands(detailGrandTotal)}
+                </td>
+              </tr>
+              {detailTableRows.map((row) => {
+                const leads =
+                  row.counts.click_whatsapp + row.counts.submit_lead;
+                const isConsultaGeneral =
+                  row.carLabel === CONSULTA_GENERAL_LABEL;
+                return (
+                  <tr
+                    key={
+                      row.carId ??
+                      `agg-${row.carLabel}`.replace(/\s+/g, "-")
+                    }
+                    className="border-b border-border/50 text-foreground/90 last:border-0"
+                  >
+                    <td className="py-3 pr-4 text-left">
+                      {isConsultaGeneral
+                        ? `WA · ${row.carLabel}`
+                        : row.carLabel}
+                    </td>
+                    <td className="py-3 px-2 text-center tabular-nums">
+                      {row.counts.click_whatsapp}
+                    </td>
+                    <td className="py-3 px-2 text-center tabular-nums">
+                      {detailColHideZero(row.counts.view_car)}
+                    </td>
+                    <td className="py-3 px-2 text-center tabular-nums">
+                      {isConsultaGeneral
+                        ? ""
+                        : detailColHideZero(row.counts.submit_lead)}
+                    </td>
+                    <td className="py-3 px-2 text-center tabular-nums">
+                      {isConsultaGeneral ? "" : detailColHideZero(leads)}
+                    </td>
+                    <td className="py-3 pl-2 text-center tabular-nums font-semibold text-foreground">
+                      {isConsultaGeneral
+                        ? consultaGeneralDisplayedTotal(row)
+                        : row.total}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </CardContent>
@@ -541,6 +958,7 @@ function StatCard({
   iconAccent,
   glow,
   pulseKey,
+  footer,
 }: {
   title: string;
   value: number;
@@ -550,6 +968,7 @@ function StatCard({
   iconAccent: string;
   glow: string;
   pulseKey: number;
+  footer?: React.ReactNode;
 }) {
   return (
     <Card
@@ -574,6 +993,9 @@ function StatCard({
             {icon}
           </div>
         </div>
+        {footer != null ? (
+          <div className="mt-4 border-t border-white/15 pt-3">{footer}</div>
+        ) : null}
       </CardContent>
     </Card>
   );

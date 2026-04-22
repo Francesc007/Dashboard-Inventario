@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAuth } from "@/lib/require-auth";
 import { normalizeInventoryPublicUrl } from "@/lib/storage-inventory";
@@ -25,6 +25,56 @@ function buildLast7CalendarDayKeys(tz: string): string[] {
     );
   }
   return keys;
+}
+
+type EventRow = Record<string, unknown> & {
+  id: string;
+  event_type: string;
+  created_at: string;
+  car_label?: string | null;
+  vehicle_name?: string | null;
+};
+
+const GENERAL_LABEL = "Consulta General";
+
+function normalizeVehicleLabel(s: string): string {
+  return s.trim().replace(/\s+/g, " ");
+}
+
+/** Agrupación única: columna car_label; solo vehicle_name en filas previas a la migración. */
+function carLabelFromEvent(ev: EventRow): string | null {
+  const cl = ev.car_label;
+  if (typeof cl === "string" && cl.trim()) {
+    return normalizeVehicleLabel(cl);
+  }
+  const legacy = ev.vehicle_name;
+  if (typeof legacy === "string" && legacy.trim()) {
+    return normalizeVehicleLabel(legacy);
+  }
+  return null;
+}
+
+function isConsultaGeneral(name: string | null): boolean {
+  if (!name) return false;
+  return (
+    normalizeVehicleLabel(name).toLowerCase() ===
+    GENERAL_LABEL.toLowerCase()
+  );
+}
+
+export type MetricsRangeParam = "7d" | "today";
+
+function filterEventsForRange(
+  events: EventRow[],
+  range: MetricsRangeParam,
+  tz: string,
+): EventRow[] {
+  if (range === "today") {
+    const todayKey = new Date().toLocaleDateString("sv-SE", { timeZone: tz });
+    return events.filter((e) => dateKeyInTz(e.created_at, tz) === todayKey);
+  }
+  const allowed = new Set(buildLast7CalendarDayKeys(tz));
+  return events.filter((e) => allowed.has(dateKeyInTz(e.created_at, tz)));
 }
 
 function emptyCounts(): Record<TrackEventType, number> {
@@ -108,17 +158,14 @@ function aggregateRows(
   return c;
 }
 
-type EventRow = Record<string, unknown> & {
-  id: string;
-  event_type: string;
-  created_at: string;
-};
-
-export async function GET() {
+export async function GET(request: NextRequest) {
   const unauthorized = await requireAuth();
   if (unauthorized) return unauthorized;
 
   try {
+    const range: MetricsRangeParam =
+      request.nextUrl.searchParams.get("range") === "today" ? "today" : "7d";
+
     const supabase = createAdminClient();
     const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
@@ -135,16 +182,17 @@ export async function GET() {
     const events = ((allEvents ?? []) as EventRow[]).filter(
       (e) => typeof e.created_at === "string",
     );
-    const totals = aggregateRows(events);
+    const scopedEvents = filterEventsForRange(events, range, METRICS_TIMEZONE);
+    const totals = aggregateRows(scopedEvents);
 
-    const last24 = events.filter((e) => e.created_at >= since24h);
+    const last24 = scopedEvents.filter((e) => e.created_at >= since24h);
     const totals24h = aggregateRows(last24);
 
     const dayKeys = buildLast7CalendarDayKeys(METRICS_TIMEZONE);
     const dayKeySet = new Set(dayKeys);
 
     const byDay = new Map<string, number>();
-    for (const e of events) {
+    for (const e of scopedEvents) {
       const k = dateKeyInTz(e.created_at, METRICS_TIMEZONE);
       if (!dayKeySet.has(k)) continue;
       byDay.set(k, (byDay.get(k) ?? 0) + 1);
@@ -175,175 +223,10 @@ export async function GET() {
       ]),
     );
 
-    const UUID_RE =
-      /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
-
-    /**
-     * Búsqueda profunda de un UUID que corresponda a un coche real.
-     * Recorre cualquier valor (strings, arrays, objetos) y devuelve el
-     * primer UUID que exista en `carMap`.
-     */
-    function deepFindCarId(value: unknown, depth = 0): string | null {
-      if (depth > 6 || value == null) return null;
-      if (typeof value === "string") {
-        const match = value.match(UUID_RE);
-        return match && carMap.has(match[0]) ? match[0] : null;
-      }
-      if (Array.isArray(value)) {
-        for (const v of value) {
-          const r = deepFindCarId(v, depth + 1);
-          if (r) return r;
-        }
-        return null;
-      }
-      if (typeof value === "object") {
-        for (const v of Object.values(value as Record<string, unknown>)) {
-          const r = deepFindCarId(v, depth + 1);
-          if (r) return r;
-        }
-      }
-      return null;
-    }
-
-    /** Busca el car_id en TODAS las columnas del evento + metadata/payload. */
-    function resolveCarIdFromEventRow(ev: EventRow): string | null {
-      // 1) columnas directas habituales
-      const direct = [
-        ev.car_id,
-        ev.carId,
-        ev.vehicle_id,
-        ev.vehicleId,
-        ev.product_id,
-        ev.productId,
-        ev.auto_id,
-        ev.autoId,
-      ];
-      for (const v of direct) {
-        if (typeof v === "string" && carMap.has(v)) return v;
-      }
-      // 2) cualquier columna del evento + metadata/payload (JSON)
-      return deepFindCarId(ev);
-    }
-
-    /** Identificador de sesión para la heurística de atribución por cercanía temporal. */
-    function sessionKey(ev: EventRow): string | null {
-      const candidates = [
-        ev.session_id,
-        ev.sessionId,
-        ev.visitor_id,
-        ev.visitorId,
-        ev.anonymous_id,
-        ev.anonymousId,
-        ev.fingerprint,
-        ev.user_id,
-        ev.userId,
-        ev.device_id,
-        ev.deviceId,
-        ev.ip,
-        ev.ip_address,
-        ev.ipAddress,
-      ];
-      for (const v of candidates) {
-        if (typeof v === "string" && v) return v;
-      }
-      const md = ev.metadata as Record<string, unknown> | null | undefined;
-      if (md && typeof md === "object") {
-        const mdCandidates = [
-          md.session_id,
-          md.sessionId,
-          md.visitor_id,
-          md.visitorId,
-          md.anonymous_id,
-          md.anonymousId,
-          md.fingerprint,
-          md.user_id,
-          md.userId,
-          md.device_id,
-          md.deviceId,
-          md.ip,
-        ];
-        for (const v of mdCandidates) {
-          if (typeof v === "string" && v) return v;
-        }
-      }
-      return null;
-    }
-
-    /** ¿El click de WhatsApp viene desde el formulario de contacto? */
-    function cameFromForm(ev: EventRow): boolean {
-      const targets = [ev.source, ev.origin, ev.from, ev.via, ev.channel];
-      for (const v of targets) {
-        if (typeof v === "string" && /form|formulario|contact/i.test(v)) {
-          return true;
-        }
-      }
-      const md = ev.metadata as Record<string, unknown> | null | undefined;
-      if (md && typeof md === "object") {
-        for (const key of [
-          "source",
-          "origin",
-          "from",
-          "via",
-          "channel",
-          "flow",
-          "cta",
-          "trigger",
-        ]) {
-          const v = md[key];
-          if (typeof v === "string" && /form|formulario|contact/i.test(v)) {
-            return true;
-          }
-        }
-      }
-      return false;
-    }
-
-    // --- Preparamos resolución por cercanía temporal ---
-    // Ordenamos por tiempo ascendente y guardamos por sesión el último car_id
-    // visto (view_car). Ventana: 60 minutos.
-    const ATTRIBUTION_WINDOW_MS = 60 * 60 * 1000;
-    const sortedAsc = [...events].sort(
-      (a, b) =>
-        new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
-    );
-    const resolvedCarByEventId = new Map<string, string | null>();
-    const lastCarBySession = new Map<
-      string,
-      { carId: string; at: number }
-    >();
-
-    for (const e of sortedAsc) {
-      const t = normalizeEventType(e.event_type);
-      const directCar = resolveCarIdFromEventRow(e);
-      let finalCar: string | null = directCar;
-
-      if (!finalCar) {
-        // heurística: último view del mismo visitante dentro de la ventana
-        const sk = sessionKey(e);
-        if (sk) {
-          const last = lastCarBySession.get(sk);
-          const nowMs = new Date(e.created_at).getTime();
-          if (last && nowMs - last.at <= ATTRIBUTION_WINDOW_MS) {
-            finalCar = last.carId;
-          }
-        }
-      }
-
-      if (t === "view_car" && directCar) {
-        const sk = sessionKey(e);
-        if (sk) {
-          lastCarBySession.set(sk, {
-            carId: directCar,
-            at: new Date(e.created_at).getTime(),
-          });
-        }
-      }
-
-      resolvedCarByEventId.set(e.id, finalCar);
-    }
-
     type CarAgg = {
       carId: string | null;
+      /** Texto mostrado = valor de car_label en BD (normalizado). */
+      carLabel: string;
       brand: string;
       model: string;
       cover_image_url: string | null;
@@ -351,73 +234,142 @@ export async function GET() {
       total: number;
     };
 
-    const perCar = new Map<string | "null", CarAgg>();
+    type BucketInfo = {
+      mapKey: string;
+      carId: string | null;
+      brand: string;
+      model: string;
+      /** Misma cadena que agrupa filas (car_label). */
+      displayLabel: string;
+      cover_image_url: string | null;
+    };
 
-    function bucket(id: string | null): string | "null" {
-      return id ?? "null";
+    function findCarIdByVehicleName(name: string): string | null {
+      const n = normalizeVehicleLabel(name).toLowerCase();
+      for (const [id, car] of carMap) {
+        const full = normalizeVehicleLabel(
+          `${car.brand} ${car.model}`,
+        ).toLowerCase();
+        if (full === n) return id;
+      }
+      return null;
     }
 
-    for (const e of events) {
-      const resolvedCarId = resolvedCarByEventId.get(e.id) ?? null;
-      const key = bucket(resolvedCarId);
-      const car = resolvedCarId ? carMap.get(resolvedCarId) : undefined;
-      if (!perCar.has(key)) {
-        perCar.set(key, {
-          carId: resolvedCarId,
-          brand: car?.brand ?? "—",
-          model: car?.model ?? "Sin vehículo",
-          cover_image_url: car?.cover_image_url ?? null,
+    function resolveBucket(ev: EventRow): BucketInfo {
+      const raw = carLabelFromEvent(ev);
+      const norm = raw ? normalizeVehicleLabel(raw) : "";
+      if (!norm || isConsultaGeneral(norm)) {
+        return {
+          mapKey: "__consulta_general__",
+          carId: null,
+          brand: "",
+          model: GENERAL_LABEL,
+          displayLabel: GENERAL_LABEL,
+          cover_image_url: null,
+        };
+      }
+      const mapKey = `__lbl:${norm.toLowerCase()}`;
+      const byName = findCarIdByVehicleName(norm);
+      if (byName) {
+        const car = carMap.get(byName)!;
+        return {
+          mapKey,
+          carId: byName,
+          brand: car.brand,
+          model: car.model,
+          displayLabel: norm,
+          cover_image_url: car.cover_image_url,
+        };
+      }
+      return {
+        mapKey,
+        carId: null,
+        brand: "",
+        model: norm,
+        displayLabel: norm,
+        cover_image_url: null,
+      };
+    }
+
+    function activityLabelForBucket(
+      t: TrackEventType,
+      b: BucketInfo,
+    ): string {
+      const line = b.displayLabel;
+      if (t === "submit_lead") return `Lead · ${line}`;
+      if (t === "click_whatsapp") {
+        if (
+          b.mapKey === "__consulta_general__" ||
+          line === GENERAL_LABEL
+        ) {
+          return "WA General";
+        }
+        return `Solicitar información · ${line}`;
+      }
+      if (t === "view_car") return `Vista · ${line}`;
+      if (t === "click_form") return `Formulario · ${line}`;
+      return line;
+    }
+
+    const perCar = new Map<string, CarAgg>();
+
+    for (const e of scopedEvents) {
+      const b = resolveBucket(e);
+      const t = normalizeEventType(e.event_type);
+      if (!t) continue;
+
+      if (!perCar.has(b.mapKey)) {
+        perCar.set(b.mapKey, {
+          carId: b.carId,
+          carLabel: b.displayLabel,
+          brand: b.brand,
+          model: b.model,
+          cover_image_url: b.cover_image_url,
           counts: emptyCounts(),
           total: 0,
         });
       }
-      const row = perCar.get(key)!;
-
-      let t = normalizeEventType(e.event_type);
-      if (!t) continue;
-
-      // Regla: un click de WhatsApp que viene desde el formulario se
-      // cuenta como "Form", no como "WA".
-      if (t === "click_whatsapp" && cameFromForm(e)) {
-        t = "click_form";
-      }
-
+      const row = perCar.get(b.mapKey)!;
       row.counts[t] += 1;
       row.total += 1;
-
-      // Regla: todo contacto (WA o Form) cuenta además como Lead.
-      if (t === "click_whatsapp" || t === "click_form") {
-        row.counts.submit_lead += 1;
-      }
     }
 
     const byCar = [...perCar.values()].sort((a, b) => b.total - a.total);
 
-    const recentEvents = [...events]
+    const recentEvents = [...scopedEvents]
       .sort(
         (a, b) =>
           new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
       )
       .slice(0, 30)
       .map((e) => {
-        const resolvedCarId = resolvedCarByEventId.get(e.id) ?? null;
+        const b = resolveBucket(e);
+        const t = normalizeEventType(e.event_type);
         return {
           id: e.id,
-          carId: resolvedCarId,
-          eventType: normalizeEventType(e.event_type) ?? e.event_type,
+          carId: b.carId,
+          eventType: t ?? e.event_type,
           createdAt: e.created_at,
           metadata: e.metadata,
-          carLabel: resolvedCarId
-            ? `${carMap.get(resolvedCarId)?.brand ?? ""} ${carMap.get(resolvedCarId)?.model ?? ""}`.trim()
-            : null,
+          carLabel: b.displayLabel,
+          activityLabel: t ? activityLabelForBucket(t, b) : String(e.event_type),
         };
       });
+
+    const vistas = totals.view_car;
+    const leadsConversions = totals.submit_lead + totals.click_whatsapp;
+    const conversionRate =
+      vistas > 0
+        ? Math.round((leadsConversions / vistas) * 1000) / 10
+        : null;
 
     return NextResponse.json({
       totals,
       totals24h,
-      leadsTotal: totals.submit_lead,
+      leadsTotal: leadsConversions,
       whatsappTotal: totals.click_whatsapp,
+      conversionRate,
+      metricsRange: range,
       timeline,
       byCar,
       recentEvents,

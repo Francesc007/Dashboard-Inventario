@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Car,
-  MessageSquareQuote,
+  Star,
   LogOut,
   Menu,
   X,
@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils";
 const nav = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/inventory", label: "Inventario", icon: Car },
-  { href: "/reviews", label: "Reseñas", icon: MessageSquareQuote },
+  { href: "/reviews", label: "Reseñas", icon: Star },
 ];
 
 function NavLinks({

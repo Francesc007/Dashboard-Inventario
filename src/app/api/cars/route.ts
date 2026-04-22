@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAuth } from "@/lib/require-auth";
+import { CAR_GALLERY_MAX_IMAGES } from "@/lib/car-gallery";
 import { normalizeCarImageUrls } from "@/lib/storage-inventory";
 import type { CarRow } from "@/types";
 
@@ -22,7 +23,11 @@ const carSchema = z.object({
   power_hp: z.number().int().nonnegative().optional().nullable(),
   condition: z.enum(["nuevo", "seminuevo"]),
   cover_image_url: optionalUrl,
-  gallery_urls: z.array(z.string().url()).max(5).optional().default([]),
+  gallery_urls: z
+    .array(z.string().url())
+    .max(CAR_GALLERY_MAX_IMAGES)
+    .optional()
+    .default([]),
 });
 
 export const dynamic = "force-dynamic"; // Evita caché

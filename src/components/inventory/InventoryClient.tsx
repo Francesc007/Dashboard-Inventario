@@ -6,7 +6,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Pencil, Plus, Trash2, Upload } from "lucide-react";
 import type { CarRow, CarCondition } from "@/types";
 import { compressImageForUpload } from "@/lib/compress-image-upload";
-import { formatCurrency, formatIntegerThousands } from "@/lib/utils";
+import { CAR_GALLERY_MAX_IMAGES } from "@/lib/car-gallery";
+import { cn, formatCurrency, formatIntegerThousands } from "@/lib/utils";
 
 const defaultYear = () => new Date().getFullYear();
 
@@ -128,7 +129,10 @@ export function InventoryClient() {
     } else {
       setForm((f) => ({
         ...f,
-        gallery_urls: [...f.gallery_urls, url].slice(0, 5),
+        gallery_urls: [...f.gallery_urls, url].slice(
+          0,
+          CAR_GALLERY_MAX_IMAGES,
+        ),
       }));
     }
   }
@@ -166,7 +170,7 @@ export function InventoryClient() {
           : Number(form.power_hp),
       condition: form.condition,
       cover_image_url: form.cover_image_url || null,
-      gallery_urls: form.gallery_urls,
+      gallery_urls: form.gallery_urls.slice(0, CAR_GALLERY_MAX_IMAGES),
     };
 
     const url = editingId ? `/api/cars/${editingId}` : "/api/cars";
@@ -203,14 +207,18 @@ export function InventoryClient() {
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">
             SIGMA AI AGENCY
           </h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Portada + hasta 5 imágenes en galería
-          </p>
         </div>
         <button
           type="button"
           onClick={openCreate}
-          className="inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-700 to-cyan-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-cyan-950/30 sm:w-auto"
+          aria-pressed={modal === "create"}
+          className={cn(
+            "inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-700 to-cyan-600 px-4 py-2.5 text-sm font-semibold text-white transition-[transform,box-shadow,filter] duration-150 sm:w-auto",
+            modal === "create"
+              ? "translate-y-0.5 shadow-[inset_0_2px_8px_rgba(0,0,0,0.5)] brightness-[0.92] ring-1 ring-inset ring-black/40"
+              : "shadow-lg shadow-cyan-950/30 hover:brightness-105",
+            "active:translate-y-0.5 active:shadow-[inset_0_2px_8px_rgba(0,0,0,0.5)] active:brightness-[0.92] active:ring-1 active:ring-inset active:ring-black/40",
+          )}
         >
           <Plus className="h-4 w-4" />
           Nuevo auto
@@ -232,15 +240,15 @@ export function InventoryClient() {
               key={c.id}
               initial={false}
               animate={{ opacity: 1, y: 0 }}
-              className="min-w-0 overflow-hidden rounded-2xl border border-white/[0.06] bg-white/[0.02]"
+              className="min-w-0 overflow-hidden rounded-2xl border border-zinc-400/35 bg-white/[0.02] shadow-[0_0_0_1px_rgba(212,212,216,0.22),0_0_28px_-10px_rgba(161,161,170,0.2),inset_0_1px_0_0_rgba(255,255,255,0.07)] ring-1 ring-zinc-400/25"
             >
-              <div className="relative aspect-[16/10] min-h-0 bg-zinc-900">
+              <div className="group relative aspect-[16/10] min-h-0 overflow-hidden bg-zinc-900">
                 {c.cover_image_url ? (
                   <Image
                     src={c.cover_image_url}
                     alt={`${c.brand} ${c.model}`}
                     fill
-                    className="object-cover"
+                    className="object-cover transition-transform duration-300 ease-out will-change-transform group-hover:scale-[1.05]"
                     sizes="(max-width:768px) 100vw, 33vw"
                   />
                 ) : (
@@ -268,9 +276,12 @@ export function InventoryClient() {
                   );
                 })()}
                 <p className="mt-2 text-lg font-semibold text-emerald-400/90">
-                  {formatCurrency(Number(c.price))}
+                  <span>{formatCurrency(Number(c.price))}</span>
+                  <span className="ml-1.5 text-sm font-medium tracking-wide text-emerald-400/75">
+                    MXN
+                  </span>
                   {Number(c.discount_percent) > 0 && (
-                    <span className="ml-2 text-xs font-normal text-amber-400">
+                    <span className="ml-2 text-xs font-normal text-red-400">
                       −{Number(c.discount_percent)}%
                     </span>
                   )}
@@ -287,7 +298,7 @@ export function InventoryClient() {
                   <button
                     type="button"
                     onClick={() => void remove(c.id)}
-                    className="inline-flex items-center justify-center rounded-lg border border-red-500/20 p-2 text-red-400 hover:bg-red-500/10"
+                    className="inline-flex items-center justify-center rounded-lg border border-white/[0.08] p-2 text-zinc-400 transition-colors hover:bg-white/[0.05] hover:text-zinc-300"
                     aria-label="Eliminar"
                   >
                     <Trash2 className="h-4 w-4" />
@@ -452,18 +463,18 @@ export function InventoryClient() {
                   <span className="text-xs font-medium text-zinc-400">Portada</span>
                   <div className="flex flex-wrap items-start gap-3">
                     {form.cover_image_url ? (
-                      <div className="relative h-28 w-44 overflow-hidden rounded-xl border border-white/10 bg-zinc-900/80 shadow-inner ring-1 ring-white/5">
+                      <div className="group relative h-28 w-44 overflow-hidden rounded-xl border border-white/10 bg-zinc-900/80 shadow-inner ring-1 ring-white/5">
                         <Image
                           src={form.cover_image_url}
                           alt="Portada"
                           fill
-                          className="object-cover"
+                          className="object-cover transition-transform duration-300 ease-out will-change-transform group-hover:scale-[1.05]"
                           sizes="176px"
                         />
                         <button
                           type="button"
                           onClick={removeCover}
-                          className="absolute right-1.5 top-1.5 rounded-md bg-black/55 p-1 text-zinc-200 backdrop-blur-sm transition-colors hover:bg-red-500/85 hover:text-white"
+                          className="absolute right-1.5 top-1.5 rounded-md bg-black/55 p-1 text-zinc-400 backdrop-blur-sm transition-colors hover:bg-white/15 hover:text-zinc-200"
                           aria-label="Quitar portada"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
@@ -493,26 +504,27 @@ export function InventoryClient() {
                 </div>
                 <div className="space-y-3 sm:col-span-2">
                   <span className="text-xs font-medium text-zinc-400">
-                    Galería ({form.gallery_urls.length}/5)
+                    Galería ({form.gallery_urls.length}/
+                    {CAR_GALLERY_MAX_IMAGES})
                   </span>
                   {form.gallery_urls.length > 0 && (
                     <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
                       {form.gallery_urls.map((url, idx) => (
                         <div
                           key={`${url}-${idx}`}
-                          className="relative aspect-[4/3] overflow-hidden rounded-lg border border-white/10 bg-zinc-900/80 ring-1 ring-white/5"
+                          className="group relative aspect-[4/3] overflow-hidden rounded-lg border border-white/10 bg-zinc-900/80 ring-1 ring-white/5"
                         >
                           <Image
                             src={url}
                             alt=""
                             fill
-                            className="object-cover"
+                            className="object-cover transition-transform duration-300 ease-out will-change-transform group-hover:scale-[1.05]"
                             sizes="(max-width:640px) 33vw, 120px"
                           />
                           <button
                             type="button"
                             onClick={() => removeGalleryAt(idx)}
-                            className="absolute right-1 top-1 rounded bg-black/55 p-0.5 text-zinc-200 backdrop-blur-sm transition-colors hover:bg-red-500/90 hover:text-white"
+                            className="absolute right-1 top-1 rounded bg-black/55 p-0.5 text-zinc-400 backdrop-blur-sm transition-colors hover:bg-white/15 hover:text-zinc-200"
                             aria-label="Quitar imagen"
                           >
                             <Trash2 className="h-3 w-3" />
@@ -522,7 +534,7 @@ export function InventoryClient() {
                     </div>
                   )}
                   <label
-                    className={`inline-flex cursor-pointer items-center gap-2 rounded-lg border border-white/[0.08] px-3 py-2 text-xs text-zinc-300 hover:bg-white/[0.04] ${form.gallery_urls.length >= 5 ? "pointer-events-none opacity-40" : ""}`}
+                    className={`inline-flex cursor-pointer items-center gap-2 rounded-lg border border-white/[0.08] px-3 py-2 text-xs text-zinc-300 hover:bg-white/[0.04] ${form.gallery_urls.length >= CAR_GALLERY_MAX_IMAGES ? "pointer-events-none opacity-40" : ""}`}
                   >
                     <Upload className="h-3.5 w-3.5" />
                     Añadir imagen
@@ -530,7 +542,10 @@ export function InventoryClient() {
                       type="file"
                       accept="image/*"
                       className="hidden"
-                      disabled={uploading || form.gallery_urls.length >= 5}
+                      disabled={
+                        uploading ||
+                        form.gallery_urls.length >= CAR_GALLERY_MAX_IMAGES
+                      }
                       onChange={(e) => {
                         const f = e.target.files?.[0];
                         if (f) void uploadFile(f, "gallery");

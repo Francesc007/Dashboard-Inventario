@@ -30,6 +30,8 @@ export type ReviewRow = {
   name: string;
   location: string | null;
   model: string | null;
+  vehicle_model: string | null;
+  vehicle_year: number | null;
   photo_url: string | null;
   comment: string;
   created_at: string;

@@ -4,29 +4,29 @@ import { useCallback, useEffect, useState } from "react";
 import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
 import { Pencil, Plus, Trash2, Upload } from "lucide-react";
-import type { CarRow, ReviewRow } from "@/types";
+import type { ReviewRow } from "@/types";
+import { cn } from "@/lib/utils";
 
 type FormState = {
-  car_id: string;
   name: string;
   location: string;
-  model: string;
+  vehicle_model: string;
+  vehicle_year: string;
   photo_url: string;
   comment: string;
 };
 
 const empty: FormState = {
-  car_id: "",
   name: "",
   location: "",
-  model: "",
+  vehicle_model: "",
+  vehicle_year: "",
   photo_url: "",
   comment: "",
 };
 
 export function ReviewsClient() {
   const [reviews, setReviews] = useState<ReviewRow[]>([]);
-  const [cars, setCars] = useState<CarRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState<"create" | "edit" | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -37,19 +37,14 @@ export function ReviewsClient() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [rRes, cRes] = await Promise.all([
-      fetch("/api/reviews"),
-      fetch("/api/cars"),
-    ]);
-    if (!rRes.ok || !cRes.ok) {
+    const rRes = await fetch("/api/reviews");
+    if (!rRes.ok) {
       setError("No se pudieron cargar los datos");
       setLoading(false);
       return;
     }
     const rj = (await rRes.json()) as { reviews: ReviewRow[] };
-    const cj = (await cRes.json()) as { cars: CarRow[] };
     setReviews(rj.reviews);
-    setCars(cj.cars);
     setError(null);
     setLoading(false);
   }, []);
@@ -68,10 +63,13 @@ export function ReviewsClient() {
   function openEdit(rv: ReviewRow) {
     setEditingId(rv.id);
     setForm({
-      car_id: rv.car_id ?? "",
       name: rv.name,
       location: rv.location ?? "",
-      model: rv.model ?? "",
+      vehicle_model: rv.vehicle_model ?? rv.model ?? "",
+      vehicle_year:
+        rv.vehicle_year != null && !Number.isNaN(Number(rv.vehicle_year))
+          ? String(rv.vehicle_year)
+          : "",
       photo_url: rv.photo_url ?? "",
       comment: rv.comment,
     });
@@ -101,11 +99,21 @@ export function ReviewsClient() {
   async function save() {
     setSaving(true);
     setError(null);
+    const yearStr = form.vehicle_year.trim();
+    const yearParsed =
+      yearStr === ""
+        ? null
+        : (() => {
+            const n = Number(yearStr);
+            return Number.isFinite(n) ? n : null;
+          })();
     const payload = {
-      car_id: form.car_id || null,
+      car_id: null,
       name: form.name,
       location: form.location || null,
-      model: form.model || null,
+      model: null,
+      vehicle_model: form.vehicle_model || null,
+      vehicle_year: yearParsed,
       photo_url: form.photo_url || null,
       comment: form.comment,
     };
@@ -147,7 +155,14 @@ export function ReviewsClient() {
         <button
           type="button"
           onClick={openCreate}
-          className="inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-700 to-cyan-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-cyan-950/30 sm:w-auto"
+          aria-pressed={modal === "create"}
+          className={cn(
+            "inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-700 to-cyan-600 px-4 py-2.5 text-sm font-semibold text-white transition-[transform,box-shadow,filter] duration-150 sm:w-auto",
+            modal === "create"
+              ? "translate-y-0.5 shadow-[inset_0_2px_8px_rgba(0,0,0,0.5)] brightness-[0.92] ring-1 ring-inset ring-black/40"
+              : "shadow-lg shadow-cyan-950/30 hover:brightness-105",
+            "active:translate-y-0.5 active:shadow-[inset_0_2px_8px_rgba(0,0,0,0.5)] active:brightness-[0.92] active:ring-1 active:ring-inset active:ring-black/40",
+          )}
         >
           <Plus className="h-4 w-4" />
           Nueva reseña
@@ -188,7 +203,17 @@ export function ReviewsClient() {
               <div className="min-w-0 flex-1">
                 <p className="font-semibold text-white">{rv.name}</p>
                 <p className="text-xs text-zinc-500">
-                  {rv.location ?? "—"} · {rv.model ?? "—"}
+                  {rv.location ?? "—"}
+                  {(() => {
+                    const lineModel = rv.vehicle_model || rv.model;
+                    const bits = [
+                      lineModel,
+                      rv.vehicle_year != null && !Number.isNaN(Number(rv.vehicle_year))
+                        ? String(rv.vehicle_year)
+                        : null,
+                    ].filter(Boolean);
+                    return bits.length ? ` · ${bits.join(" · ")}` : "";
+                  })()}
                 </p>
                 <p className="mt-2 line-clamp-3 text-sm text-zinc-300">
                   {rv.comment}
@@ -238,23 +263,6 @@ export function ReviewsClient() {
               </h3>
               <div className="mt-4 space-y-3 text-sm">
                 <label className="block">
-                  <span className="text-xs font-medium text-zinc-400">Vehículo (opcional)</span>
-                  <select
-                    className="panel-field bg-slate-950/80"
-                    value={form.car_id}
-                    onChange={(e) =>
-                      setForm((f) => ({ ...f, car_id: e.target.value }))
-                    }
-                  >
-                    <option value="">Sin vincular</option>
-                    {cars.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.brand} {c.model} ({c.year})
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="block">
                   <span className="text-xs font-medium text-zinc-400">Nombre</span>
                   <input
                     className="panel-field"
@@ -275,12 +283,27 @@ export function ReviewsClient() {
                   />
                 </label>
                 <label className="block">
-                  <span className="text-xs font-medium text-zinc-400">Modelo (texto)</span>
+                  <span className="text-xs font-medium text-zinc-400">Modelo</span>
                   <input
                     className="panel-field"
-                    value={form.model}
+                    placeholder="Ej. Jetta, CR-V Touring…"
+                    value={form.vehicle_model}
                     onChange={(e) =>
-                      setForm((f) => ({ ...f, model: e.target.value }))
+                      setForm((f) => ({ ...f, vehicle_model: e.target.value }))
+                    }
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-xs font-medium text-zinc-400">Año</span>
+                  <input
+                    type="number"
+                    min={1900}
+                    max={2100}
+                    className="panel-field"
+                    placeholder="Ej. 2024"
+                    value={form.vehicle_year}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, vehicle_year: e.target.value }))
                     }
                   />
                 </label>

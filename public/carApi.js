@@ -31,15 +31,25 @@
     };
   }
 
+  function normalizeReview(rv) {
+    if (!rv || typeof rv !== "object") return rv;
+    return {
+      ...rv,
+      photo_url: normalizeUrl(rv.photo_url) ?? null,
+    };
+  }
+
   /**
    * Envía un evento a POST /api/track del panel. **Siempre pasa carId** (UUID del coche)
    * cuando el usuario interactúa en la ficha de un auto; si no, el dashboard no puede
    * atribuir WA / form / leads a esa fila.
    *
    * @param {string} apiBase - Misma URL que en fetchCars (origen del panel).
-   * @param {{ eventType: string, carId?: string|null, metadata?: object, trackKey?: string }} opts
-   *   eventType: "view_car" | "whatsapp_click" | "form_submit" | "click_form" | "click_whatsapp" | "submit_lead"
-   *   carId: UUID del vehículo (campo `id` de cada coche devuelto por fetchCars).
+   * @param {{ eventType: string, carId?: string|null, carLabel?: string|null, vehicleName?: string|null, metadata?: object, trackKey?: string }} opts
+   *   eventType: "view_car" | "whatsapp_click" | "form_submit" | … (ver API /api/track)
+   *   carId: UUID cuando aplique (ficha de auto).
+   *   carLabel: preferido — texto que guarda la BD en car_label (Consulta General, Marca Modelo, etc.).
+   *   vehicleName: alias de carLabel si no envías carLabel.
    */
   function track(apiBase, opts) {
     var base = (apiBase || "").replace(/\/+$/, "");
@@ -47,10 +57,24 @@
       return Promise.reject(new Error("carApi.track: falta apiBase"));
     }
     opts = opts || {};
+    var meta =
+      opts.metadata && typeof opts.metadata === "object" ? opts.metadata : {};
+    var lbl =
+      (opts.carLabel && String(opts.carLabel).trim()) ||
+      (opts.vehicleName && String(opts.vehicleName).trim()) ||
+      "";
+    if (lbl) {
+      meta = Object.assign({}, meta, { car_label: lbl, vehicle_name: lbl });
+    }
     var body = JSON.stringify({
       eventType: opts.eventType,
       carId: opts.carId != null ? opts.carId : null,
-      metadata: opts.metadata && typeof opts.metadata === "object" ? opts.metadata : {},
+      carLabel: lbl || undefined,
+      vehicleName:
+        opts.vehicleName != null && String(opts.vehicleName).trim()
+          ? String(opts.vehicleName).trim()
+          : undefined,
+      metadata: meta,
     });
     var headers = { "Content-Type": "application/json" };
     var key = opts.trackKey || (typeof window !== "undefined" && window.__TRACK_API_KEY__);
@@ -104,6 +128,27 @@
         .then(function (data) {
           var list = data && data.cars ? data.cars : [];
           return list.map(normalizeCar);
+        });
+    },
+
+    /**
+     * Reseñas públicas (misma política CORS que fetchCars). Se actualizan al recargar o al volver a llamar.
+     * @param {string} apiBase - Origen del panel (sin barra final)
+     * @returns {Promise<Array>}
+     */
+    fetchReviews: function (apiBase) {
+      var base = (apiBase || "").replace(/\/+$/, "");
+      if (!base) {
+        return Promise.reject(new Error("carApi.fetchReviews: falta apiBase"));
+      }
+      return fetch(base + "/api/reviews", { method: "GET", credentials: "omit" })
+        .then(function (res) {
+          if (!res.ok) throw new Error("carApi.reviews: " + res.status);
+          return res.json();
+        })
+        .then(function (data) {
+          var list = data && data.reviews ? data.reviews : [];
+          return list.map(normalizeReview);
         });
     },
   };

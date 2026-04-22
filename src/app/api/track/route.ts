@@ -9,6 +9,15 @@ import {
 
 const bodySchema = z.object({
   carId: z.string().uuid().optional().nullable(),
+  /**
+   * Nivel raíz del JSON (landing) → se persiste en la columna `car_label` de
+   * `landing_interactions` para el detalle por vehículo en métricas.
+   */
+  carLabel: z.string().optional().nullable(),
+  /** Mismo significado que carLabel; alias snake_case opcional en el body. */
+  car_label: z.string().optional().nullable(),
+  /** Compatibilidad: si no hay carLabel, se usa para rellenar car_label. */
+  vehicleName: z.string().optional().nullable(),
   eventType: z.enum([
     "view_car",
     "car_view",
@@ -38,6 +47,10 @@ function toDbEventType(
   if (t === "whatsapp_click") return "click_whatsapp";
   if (t === "form_submit") return "submit_lead";
   return t;
+}
+
+function normalizeCarLabelInput(s: string): string {
+  return s.trim().replace(/\s+/g, " ");
 }
 
 function resolveCarId(
@@ -97,15 +110,56 @@ export async function POST(request: Request) {
     return withCors(request, res);
   }
 
-  const { carId, eventType, metadata } = parsed.data;
-  const meta = metadata ?? {};
+  const {
+    carId,
+    carLabel,
+    car_label: carLabelSnake,
+    vehicleName,
+    eventType,
+    metadata,
+  } = parsed.data;
+  const meta = { ...(metadata ?? {}) };
   const resolvedCarId = resolveCarId(carId ?? null, meta);
+
+  // 1) Raíz del JSON: carLabel o car_label → columna BD `car_label`
+  const fromRootCamel =
+    typeof carLabel === "string" ? normalizeCarLabelInput(carLabel) : "";
+  const fromRootSnake =
+    typeof carLabelSnake === "string"
+      ? normalizeCarLabelInput(carLabelSnake)
+      : "";
+  const fromRoot = fromRootCamel || fromRootSnake || null;
+  let carLabelForDb: string | null = fromRoot || null;
+  if (!carLabelForDb && typeof vehicleName === "string") {
+    const v = normalizeCarLabelInput(vehicleName);
+    carLabelForDb = v || null;
+  }
+  if (!carLabelForDb) {
+    const nameFromMeta = [
+      meta.car_label,
+      meta.carLabel,
+      meta.vehicle_name,
+      meta.vehicleName,
+      meta.model_label,
+      meta.modelLabel,
+    ].find((v) => typeof v === "string" && String(v).trim());
+    if (nameFromMeta) {
+      carLabelForDb = normalizeCarLabelInput(String(nameFromMeta)) || null;
+    }
+  }
+
+  if (carLabelForDb) {
+    meta.car_label = carLabelForDb;
+    meta.vehicle_name = carLabelForDb;
+  }
 
   try {
     const supabase = createAdminClient();
     const { error } = await supabase.from("landing_interactions").insert({
       car_id: resolvedCarId,
       event_type: toDbEventType(eventType),
+      car_label: carLabelForDb,
+      vehicle_name: carLabelForDb,
       metadata: meta,
     });
 
