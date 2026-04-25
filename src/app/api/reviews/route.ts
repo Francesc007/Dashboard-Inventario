@@ -66,7 +66,7 @@ const yearInRange = z
   .nullable();
 
 const reviewSchema = z.object({
-  car_id: z.string().uuid().optional().nullable(),
+  car_id: z.union([z.string().uuid(), z.null()]).optional(),
   name: z.string().min(1),
   location: z.string().optional().nullable(),
   model: z.string().optional().nullable(),

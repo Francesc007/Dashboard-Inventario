@@ -290,7 +290,7 @@ export function InventoryClient() {
                   <button
                     type="button"
                     onClick={() => openEdit(c)}
-                    className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg border border-white/[0.08] py-2 text-xs font-medium text-zinc-200 hover:bg-white/[0.04]"
+                    className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg border border-white/[0.08] py-2 text-xs font-medium text-zinc-200 transition-all duration-150 hover:border-white/[0.14] hover:bg-white/[0.1] hover:text-white hover:shadow-[0_0_18px_rgba(255,255,255,0.08)] active:bg-white/[0.14] active:brightness-110"
                   >
                     <Pencil className="h-3.5 w-3.5" />
                     Editar

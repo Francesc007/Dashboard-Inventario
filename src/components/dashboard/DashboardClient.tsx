@@ -101,6 +101,21 @@ const STAT_CARD_GLOW: Record<"vistas" | "whatsapp" | "formulario" | "leads", str
       "shadow-[0_0_0_1px_rgba(34,211,238,0.55),0_0_34px_rgba(6,182,212,0.32),0_0_52px_-8px_rgba(14,165,233,0.18)] ring-1 ring-cyan-400/45",
   };
 
+/** Al hover: más brillo y borde (evita `hover:shadow-lg`, que sustituía el halo y lo apagaba). */
+const STAT_CARD_GLOW_HOVER: Record<
+  "vistas" | "whatsapp" | "formulario" | "leads",
+  string
+> = {
+  vistas:
+    "hover:shadow-[0_0_0_1px_rgba(196,181,253,0.75),0_0_52px_rgba(139,92,246,0.45),0_0_80px_-6px_rgba(109,40,217,0.32)] hover:ring-2 hover:ring-violet-300/70",
+  whatsapp:
+    "hover:shadow-[0_0_0_1px_rgba(134,239,172,0.85),0_0_52px_rgba(34,197,94,0.45),0_0_80px_-6px_rgba(22,163,74,0.32)] hover:ring-2 hover:ring-green-300/70",
+  formulario:
+    "hover:shadow-[0_0_0_1px_rgba(253,224,71,0.8),0_0_50px_rgba(245,158,11,0.42),0_0_78px_-6px_rgba(217,119,6,0.28)] hover:ring-2 hover:ring-amber-300/65",
+  leads:
+    "hover:shadow-[0_0_0_1px_rgba(103,232,249,0.85),0_0_52px_rgba(6,182,212,0.48),0_0_80px_-6px_rgba(14,165,233,0.3)] hover:ring-2 hover:ring-cyan-300/70",
+};
+
 /**
  * Misma métrica y orden que las tarjetas principales: WA, Vistas, Form, Leads.
  */
@@ -616,10 +631,10 @@ export function DashboardClient() {
         <div className="mt-3 flex flex-row flex-wrap items-center justify-center gap-3 sm:mt-5 sm:justify-end sm:gap-4">
           <div className="flex items-center gap-2">
             <span className="relative flex h-2.5 w-2.5">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan-400 opacity-60" />
-              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-cyan-500" />
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
+              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
             </span>
-            <span className="flex items-center gap-1.5 text-xs font-medium text-cyan-400/90">
+            <span className="flex items-center gap-1.5 text-xs font-medium text-emerald-400/95">
               <Radio className="h-3.5 w-3.5" aria-hidden />
               Conectado
             </span>
@@ -663,9 +678,10 @@ export function DashboardClient() {
           value={detailTotalsWhatsappAll}
           icon={<Phone className="h-5 w-5" />}
           accent="from-green-500/25 via-emerald-950/40 to-slate-950/35"
-          borderAccent="border-green-400/50"
+          borderAccent="border-green-400/50 hover:border-green-300/75"
           iconAccent="bg-green-500/15 text-green-200"
           glow={STAT_CARD_GLOW.whatsapp}
+          glowHover={STAT_CARD_GLOW_HOVER.whatsapp}
           pulseKey={pulse}
         />
         <StatCard
@@ -673,9 +689,10 @@ export function DashboardClient() {
           value={detailTotalsModelsOnly.view_car}
           icon={<Activity className="h-5 w-5" />}
           accent="from-violet-600/25 via-purple-950/45 to-slate-950/40"
-          borderAccent="border-violet-400/50"
+          borderAccent="border-violet-400/50 hover:border-violet-300/75"
           iconAccent="bg-violet-500/15 text-violet-200"
           glow={STAT_CARD_GLOW.vistas}
+          glowHover={STAT_CARD_GLOW_HOVER.vistas}
           pulseKey={pulse}
         />
         <StatCard
@@ -683,9 +700,10 @@ export function DashboardClient() {
           value={detailTotalsModelsOnly.submit_lead}
           icon={<MousePointerClick className="h-5 w-5" />}
           accent="from-amber-500/20 via-orange-950/35 to-amber-950/20"
-          borderAccent="border-amber-400/50"
+          borderAccent="border-amber-400/50 hover:border-amber-300/75"
           iconAccent="bg-amber-500/15 text-amber-200"
           glow={STAT_CARD_GLOW.formulario}
+          glowHover={STAT_CARD_GLOW_HOVER.formulario}
           pulseKey={pulse}
         />
         <StatCard
@@ -693,9 +711,10 @@ export function DashboardClient() {
           value={detailTotalsModelsOnly.leads}
           icon={<UserPlus className="h-5 w-5" />}
           accent="from-cyan-500/25 via-sky-950/35 to-slate-950/35"
-          borderAccent="border-cyan-400/50"
+          borderAccent="border-cyan-400/50 hover:border-cyan-300/80"
           iconAccent="bg-cyan-500/15 text-cyan-200"
           glow={STAT_CARD_GLOW.leads}
+          glowHover={STAT_CARD_GLOW_HOVER.leads}
           pulseKey={pulse}
           footer={
             <div className="space-y-1">
@@ -957,6 +976,7 @@ function StatCard({
   borderAccent,
   iconAccent,
   glow,
+  glowHover,
   pulseKey,
   footer,
 }: {
@@ -967,12 +987,13 @@ function StatCard({
   borderAccent: string;
   iconAccent: string;
   glow: string;
+  glowHover: string;
   pulseKey: number;
   footer?: React.ReactNode;
 }) {
   return (
     <Card
-      className={`min-w-0 overflow-hidden border bg-gradient-to-br transition duration-200 ease-out will-change-transform hover:-translate-y-0.5 hover:shadow-lg ${glow} ${borderAccent} ${accent}`}
+      className={`relative z-0 min-w-0 overflow-hidden border bg-gradient-to-br transition-[transform,box-shadow,filter] duration-200 ease-out will-change-transform hover:z-10 hover:-translate-y-1 hover:brightness-[1.03] ${glow} ${glowHover} ${borderAccent} ${accent}`}
     >
       <CardContent className="p-5">
         <div className="flex items-start justify-between gap-3">

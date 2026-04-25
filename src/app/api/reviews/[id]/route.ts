@@ -42,7 +42,7 @@ const yearInRange = z
 
 const patchSchema = z
   .object({
-    car_id: z.string().uuid().optional().nullable(),
+    car_id: z.union([z.string().uuid(), z.null()]).optional(),
     name: z.string().min(1).optional(),
     location: z.string().optional().nullable(),
     model: z.string().optional().nullable(),
@@ -55,11 +55,22 @@ const patchSchema = z
 
 type Params = { params: Promise<{ id: string }> };
 
+function omitUndefined(row: Record<string, unknown>) {
+  return Object.fromEntries(
+    Object.entries(row).filter(([, v]) => v !== undefined),
+  ) as Record<string, unknown>;
+}
+
 export async function PATCH(request: Request, { params }: Params) {
   const unauthorized = await requireAuth();
   if (unauthorized) return unauthorized;
 
-  const { id } = await params;
+  const { id: rawId } = await params;
+  const id = rawId?.trim();
+  if (!id || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) {
+    return NextResponse.json({ error: "ID inválido" }, { status: 400 });
+  }
+
   let json: unknown;
   try {
     json = await request.json();
@@ -77,50 +88,67 @@ export async function PATCH(request: Request, { params }: Params) {
 
   try {
     const supabase = createAdminClient();
-    const patch = parsed.data;
-
-    let result = await supabase
+    const { data: existing, error: existErr } = await supabase
       .from("reviews")
-      .update(patch)
+      .select("id")
       .eq("id", id)
-      .select("*")
       .maybeSingle();
 
-    if (result.error && isMissingExtendedReviewColumns(result.error)) {
+    if (existErr) {
+      console.error(existErr);
+      return NextResponse.json({ error: existErr.message }, { status: 500 });
+    }
+    if (!existing) {
+      return NextResponse.json({ error: "No encontrado" }, { status: 404 });
+    }
+
+    const patch = parsed.data;
+    const extendedPayload = omitUndefined({ ...patch } as Record<string, unknown>);
+
+    let up = await supabase
+      .from("reviews")
+      .update(extendedPayload)
+      .eq("id", id);
+
+    if (up.error && isMissingExtendedReviewColumns(up.error)) {
       const {
         vehicle_model,
         vehicle_year,
         model: modelPatch,
         ...rest
       } = patch;
-      const legacyUpdate = {
+      const legacyUpdate = omitUndefined({
         ...rest,
         model:
           legacyModelLine(
             vehicle_model ?? null,
             vehicle_year ?? null,
           ) ?? modelPatch ?? null,
-      };
-      result = await supabase
-        .from("reviews")
-        .update(legacyUpdate)
-        .eq("id", id)
-        .select("*")
-        .maybeSingle();
+      });
+      up = await supabase.from("reviews").update(legacyUpdate).eq("id", id);
     }
 
-    if (result.error) {
-      console.error(result.error);
-      return NextResponse.json({ error: result.error.message }, { status: 500 });
+    if (up.error) {
+      console.error(up.error);
+      return NextResponse.json({ error: up.error.message }, { status: 500 });
     }
-    if (!result.data) {
+
+    const { data: row, error: selErr } = await supabase
+      .from("reviews")
+      .select("*")
+      .eq("id", id)
+      .single();
+
+    if (selErr || !row) {
+      console.error(selErr);
       return NextResponse.json({ error: "No encontrado" }, { status: 404 });
     }
-    const row = result.data as ReviewRow;
+
+    const typed = row as ReviewRow;
     return NextResponse.json({
       review: {
-        ...row,
-        photo_url: normalizeInventoryPublicUrl(row.photo_url),
+        ...typed,
+        photo_url: normalizeInventoryPublicUrl(typed.photo_url),
       },
     });
   } catch (e) {

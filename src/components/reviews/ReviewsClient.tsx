@@ -25,6 +25,68 @@ const empty: FormState = {
   comment: "",
 };
 
+/** Separa modelo / año al editar (columnas propias o texto legacy en `model` tipo "Jetta · 2024"). */
+function parseReviewFormVehicle(rv: ReviewRow): {
+  vehicle_model: string;
+  vehicle_year: string;
+} {
+  const yCol =
+    rv.vehicle_year != null && !Number.isNaN(Number(rv.vehicle_year))
+      ? Math.round(Number(rv.vehicle_year))
+      : null;
+
+  if (yCol != null && yCol >= 1900 && yCol <= 2100) {
+    const vm = (rv.vehicle_model ?? "").trim();
+    if (vm) {
+      return { vehicle_model: vm, vehicle_year: String(yCol) };
+    }
+    const combined = (rv.model ?? "").trim();
+    const stripped = combined
+      .replace(new RegExp(`\\s*·\\s*${yCol}\\s*$`), "")
+      .trim();
+    return {
+      vehicle_model: stripped,
+      vehicle_year: String(yCol),
+    };
+  }
+
+  const vmOnly = (rv.vehicle_model ?? "").trim();
+  if (vmOnly) {
+    return { vehicle_model: vmOnly, vehicle_year: "" };
+  }
+
+  const raw = (rv.model ?? "").trim();
+  if (!raw) {
+    return { vehicle_model: "", vehicle_year: "" };
+  }
+
+  const parts = raw.split(/\s*·\s*/).filter(Boolean);
+  if (parts.length >= 2) {
+    const last = parts[parts.length - 1]!;
+    const y = Number(last);
+    if (
+      /^\d{4}$/.test(last) &&
+      Number.isInteger(y) &&
+      y >= 1900 &&
+      y <= 2100
+    ) {
+      return {
+        vehicle_model: parts.slice(0, -1).join(" · ").trim(),
+        vehicle_year: String(y),
+      };
+    }
+  }
+
+  if (parts.length === 1 && /^\d{4}$/.test(parts[0]!)) {
+    const y = Number(parts[0]);
+    if (y >= 1900 && y <= 2100) {
+      return { vehicle_model: "", vehicle_year: String(y) };
+    }
+  }
+
+  return { vehicle_model: raw, vehicle_year: "" };
+}
+
 export function ReviewsClient() {
   const [reviews, setReviews] = useState<ReviewRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -62,14 +124,12 @@ export function ReviewsClient() {
 
   function openEdit(rv: ReviewRow) {
     setEditingId(rv.id);
+    const { vehicle_model, vehicle_year } = parseReviewFormVehicle(rv);
     setForm({
       name: rv.name,
       location: rv.location ?? "",
-      vehicle_model: rv.vehicle_model ?? rv.model ?? "",
-      vehicle_year:
-        rv.vehicle_year != null && !Number.isNaN(Number(rv.vehicle_year))
-          ? String(rv.vehicle_year)
-          : "",
+      vehicle_model,
+      vehicle_year,
       photo_url: rv.photo_url ?? "",
       comment: rv.comment,
     });
@@ -183,19 +243,19 @@ export function ReviewsClient() {
             <motion.article
               key={rv.id}
               initial={false}
-              className="flex min-w-0 gap-4 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4"
+              className="group flex min-w-0 items-stretch gap-4 overflow-hidden rounded-2xl border border-zinc-400/35 bg-white/[0.02] p-4 shadow-[0_0_0_1px_rgba(212,212,216,0.22),0_0_28px_-10px_rgba(161,161,170,0.2),inset_0_1px_0_0_rgba(255,255,255,0.07)] ring-1 ring-zinc-400/25"
             >
-              <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-xl bg-zinc-900">
+              <div className="relative w-32 shrink-0 self-stretch min-h-[7.5rem] overflow-hidden rounded-xl bg-zinc-900">
                 {rv.photo_url ? (
                   <Image
                     src={rv.photo_url}
                     alt={rv.name}
                     fill
-                    className="object-cover"
-                    sizes="80px"
+                    className="object-cover transition-transform duration-300 ease-out will-change-transform group-hover:scale-[1.05]"
+                    sizes="128px"
                   />
                 ) : (
-                  <div className="flex h-full items-center justify-center text-[10px] text-zinc-600">
+                  <div className="flex h-full min-h-[7.5rem] items-center justify-center text-[10px] text-zinc-600">
                     Sin foto
                   </div>
                 )}
@@ -222,7 +282,7 @@ export function ReviewsClient() {
                   <button
                     type="button"
                     onClick={() => openEdit(rv)}
-                    className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg border border-white/[0.08] py-1.5 text-xs text-zinc-200 hover:bg-white/[0.04]"
+                    className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg border border-white/[0.08] py-1.5 text-xs font-medium text-zinc-200 transition-all duration-150 hover:border-white/[0.14] hover:bg-white/[0.1] hover:text-white hover:shadow-[0_0_18px_rgba(255,255,255,0.08)] active:bg-white/[0.14] active:brightness-110"
                   >
                     <Pencil className="h-3.5 w-3.5" />
                     Editar
@@ -230,7 +290,7 @@ export function ReviewsClient() {
                   <button
                     type="button"
                     onClick={() => void remove(rv.id)}
-                    className="rounded-lg border border-red-500/20 p-1.5 text-red-400 hover:bg-red-500/10"
+                    className="inline-flex items-center justify-center rounded-lg border border-white/[0.08] p-2 text-zinc-400 transition-colors hover:bg-white/[0.05] hover:text-zinc-300"
                     aria-label="Eliminar"
                   >
                     <Trash2 className="h-4 w-4" />

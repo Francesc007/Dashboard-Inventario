@@ -15,20 +15,23 @@ import { SigmaLogo } from "@/components/brand/SigmaLogo";
 import { cn } from "@/lib/utils";
 
 const nav = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/inventory", label: "Inventario", icon: Car },
-  { href: "/reviews", label: "Reseñas", icon: Star },
-];
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, iconStroke: 0 },
+  { href: "/inventory", label: "Inventario", icon: Car, iconStroke: 1.25 },
+  { href: "/reviews", label: "Reseñas", icon: Star, iconStroke: 0 },
+] as const;
 
 function NavLinks({
   pathname,
   onNavigate,
+  grow = true,
 }: {
   pathname: string;
   onNavigate?: () => void;
+  /** En escritorio el nav ocupa espacio y empuja «Cerrar sesión» abajo; en el drawer móvil va en `false`. */
+  grow?: boolean;
 }) {
   return (
-    <nav className="flex flex-1 flex-col gap-1 p-3">
+    <nav className={cn("flex flex-col gap-1 p-3", grow && "flex-1")}>
       {nav.map((item) => {
         const active = pathname === item.href;
         const Icon = item.icon;
@@ -42,7 +45,12 @@ function NavLinks({
                   : "border border-transparent text-muted-foreground hover:bg-muted hover:text-foreground active:translate-y-px active:shadow-[inset_0_2px_8px_rgba(0,0,0,0.12)] dark:active:shadow-[inset_0_2px_8px_rgba(0,0,0,0.25)]",
               )}
             >
-              <Icon className="h-5 w-5 shrink-0 opacity-90" />
+              <Icon
+                className="h-5 w-5 shrink-0 opacity-95"
+                fill="currentColor"
+                stroke="currentColor"
+                strokeWidth={item.iconStroke}
+              />
               {item.label}
             </span>
           </Link>
@@ -81,7 +89,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <SigmaLogo
           width={280}
           height={64}
-          className="h-[52px] w-auto max-w-[min(72vw,280px)] object-contain object-center"
+          className="h-[60px] w-auto max-w-[min(78vw,300px)] object-contain object-center"
           priority
         />
         <button
@@ -100,12 +108,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <div className="fixed inset-0 z-50 md:hidden" role="dialog" aria-modal="true">
           <button
             type="button"
-            className="absolute inset-0 bg-black/65 backdrop-blur-sm"
+            className="absolute inset-0 bg-black/50 backdrop-blur-[2px]"
             aria-label="Cerrar menú"
             onClick={closeMobile}
           />
-          <aside className="absolute right-0 top-0 flex h-full w-[min(20rem,88vw)] flex-col border-l border-cyan-500/35 bg-card/98 shadow-[-12px_0_48px_rgba(0,0,0,0.45)] ring-1 ring-cyan-500/20 backdrop-blur-xl">
-            <div className="flex items-center justify-between border-b border-border px-4 py-4">
+          <aside className="absolute right-0 top-3 max-h-[min(32rem,calc(100dvh-1.5rem))] w-[min(20rem,88vw)] overflow-y-auto rounded-l-2xl border border-cyan-500/30 border-r-0 bg-card/98 shadow-[-8px_0_40px_rgba(0,0,0,0.35)] ring-1 ring-cyan-500/15 backdrop-blur-xl">
+            <div className="flex shrink-0 items-center justify-between border-b border-border px-4 py-3">
               <span className="text-sm font-semibold tracking-tight text-foreground">
                 Menú
               </span>
@@ -118,8 +126,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <NavLinks pathname={pathname} onNavigate={closeMobile} />
-            <div className="border-t border-border p-3">
+            <NavLinks pathname={pathname} onNavigate={closeMobile} grow={false} />
+            <div className="shrink-0 border-t border-border p-3">
               <button
                 type="button"
                 onClick={() => {
